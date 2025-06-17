@@ -1,6 +1,8 @@
-pytest==7.4.3
+pytest>=7.4.3
+pytest-cov>=4.1.0
 python-dotenv==1.0.0
 argparse==1.4.0
-difflib==3.10.0
-tqdm==4.66.1
-colorama==0.4.6 
+tqdm>=4.66.2
+colorama==0.4.6
+black>=23.12.1
+isort>=5.13.2 
