@@ -17,12 +17,13 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "pytest>=7.4.3",
-    "pytest-cov>=4.1.0",
-    "tqdm>=4.66.2",
-    "black>=23.12.1",
-    "isort>=5.13.2",
+    "tqdm>=4.66.2"
 ]
+keywords = ["duplicate-code", "code-analysis", "static-analysis", "refactoring", "python"]
+urls = { 
+  "Homepage" = "https://github.com/kararhaider/replicheck",
+  "Repository" = "https://github.com/kararhaider/replicheck"
+}
 
 [project.optional-dependencies]
 dev = [
@@ -38,4 +39,4 @@ replicheck = "replicheck.cli:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --cov=replicheck" 
+addopts = "-v --cov=replicheck"
