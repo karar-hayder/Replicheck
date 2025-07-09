@@ -23,4 +23,7 @@ PyYAML==6.0.2
 radon==6.0.1
 six==1.17.0
 tqdm==4.67.1
+tree-sitter==0.24.0
+tree-sitter-javascript==0.23.1
+tree-sitter-python==0.23.6
 virtualenv==20.31.2

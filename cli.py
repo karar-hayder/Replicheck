@@ -33,7 +33,7 @@ def parse_args():
     )
     parser.add_argument(
         "--extensions",
-        default=".py,.js",
+        default=".py,.js,.jsx",
         help="Comma-separated file extensions to analyze",
     )
     parser.add_argument(

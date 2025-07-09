@@ -17,7 +17,8 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "tqdm>=4.66.2"
+    "tqdm>=4.66.2",
+    "tree_sitter>=0.20.4",
 ]
 keywords = ["duplicate-code", "code-analysis", "static-analysis", "refactoring", "python"]
 urls = { Homepage = "https://github.com/kararhaider/replicheck", Repository = "https://github.com/kararhaider/replicheck" }

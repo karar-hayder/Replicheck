@@ -38,7 +38,7 @@ Key options:
 - `--path`: Directory to analyze (required)
 - `--min-sim`: Minimum similarity threshold (default: 0.8)
 - `--min-size`: Minimum code block size in tokens (default: 50)
-- `--extensions`: File extensions to analyze (default: .py,.js)
+- `--extensions`: File extensions to analyze (default: .py,.js,.ts,.jsx,.tsx)
 - `--output-format`: Output format (text or json, default: text)
 - `--output-file`: Path to save the report (optional)
 - `--ignore-dirs`: Directories to ignore (default: .git .venv venv env ENV build dist node_modules)

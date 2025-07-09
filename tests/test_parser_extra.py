@@ -78,4 +78,6 @@ def test_parse_javascript_placeholder(tmp_path):
     file.write_text("function foo() { return 1; }")
     parser = CodeParser()
     blocks = parser.parse_file(file)
-    assert blocks == []
+    assert len(blocks) >= 1
+    assert blocks[0]["location"]["file"] == str(file)
+    assert "foo" in blocks[0]["tokens"]

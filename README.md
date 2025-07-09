@@ -9,7 +9,7 @@ A Python tool for detecting code duplications and code quality issues in your pr
 - Detect large files and large classes by token count
 - Find TODO/FIXME comments across your codebase
 - Configurable similarity threshold and minimum block size
-- Support for Python (JavaScript support is a placeholder for future extension)
+- Support for Python, JavaScript, TypeScript, JSX, and TSX files
 - Ignores virtual environments and user-specified directories
 - Detailed reporting in text, JSON, or Markdown format
 - Summary section at the top of every report
