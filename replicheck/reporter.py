@@ -12,6 +12,14 @@ init()
 
 
 class Reporter:
+    severity_order = {
+        "Critical 🔴": 4,
+        "High 🟠": 3,
+        "Medium 🟡": 2,
+        "Low 🟢": 1,
+        "None": 0,
+    }
+
     def __init__(self, output_format: str = "text"):
         if output_format not in {"text", "json"}:
             raise ValueError("Output format must be either 'text' or 'json'")
@@ -90,6 +98,15 @@ class Reporter:
         # Add cyclomatic complexity section
         if complexity_results is not None:
             if complexity_results:
+                # Sort by severity (Critical > High > Medium > Low > None), then by complexity descending
+                complexity_results = sorted(
+                    complexity_results,
+                    key=lambda x: (
+                        self.severity_order.get(x.get("severity"), 0),
+                        x.get("complexity", 0),
+                    ),
+                    reverse=True,
+                )
                 console_output.append(
                     f"{Fore.MAGENTA}High Cyclomatic Complexity Functions (threshold: >= {complexity_results[0].get('threshold', 'N/A')}):{Style.RESET_ALL}"
                 )
@@ -97,7 +114,7 @@ class Reporter:
                     f"High Cyclomatic Complexity Functions (threshold: >= {complexity_results[0].get('threshold', 'N/A')}):"
                 )
                 for item in complexity_results:
-                    line = f"- {item['file']}:{item['lineno']} {item['name']} (complexity: {item['complexity']})"
+                    line = f"- {item['file']}:{item['lineno']} {item['name']} (complexity: {item['complexity']}) [{item['severity']}]"
                     console_output.append(line)
                     file_output.append(line)
             else:
@@ -110,6 +127,15 @@ class Reporter:
         # Add large files section
         if large_files is not None:
             if large_files:
+                # Sort by severity, then by token_count descending
+                large_files = sorted(
+                    large_files,
+                    key=lambda x: (
+                        self.severity_order.get(x.get("severity"), 0),
+                        x.get("token_count", 0),
+                    ),
+                    reverse=True,
+                )
                 threshold = (
                     large_files[0].get("threshold", "N/A") if large_files else "N/A"
                 )
@@ -121,7 +147,7 @@ class Reporter:
                     f"Large Files (threshold: >= {threshold}, top N: {top_n}):"
                 )
                 for item in large_files:
-                    line = f"- {item['file']} (tokens: {item['token_count']})"
+                    line = f"- {item['file']} (tokens: {item['token_count']}) [{item['severity']}]"
                     console_output.append(line)
                     file_output.append(line)
             else:
@@ -134,6 +160,15 @@ class Reporter:
         # Add large classes section
         if large_classes is not None:
             if large_classes:
+                # Sort by severity, then by token_count descending
+                large_classes = sorted(
+                    large_classes,
+                    key=lambda x: (
+                        self.severity_order.get(x.get("severity"), 0),
+                        x.get("token_count", 0),
+                    ),
+                    reverse=True,
+                )
                 threshold = (
                     large_classes[0].get("threshold", "N/A") if large_classes else "N/A"
                 )
@@ -145,7 +180,7 @@ class Reporter:
                     f"Large Classes (threshold: >= {threshold}, top N: {top_n}):"
                 )
                 for item in large_classes:
-                    line = f"- {item['file']}:{item['start_line']} {item['name']} (tokens: {item['token_count']})"
+                    line = f"- {item['file']}:{item['start_line']} {item['name']} (tokens: {item['token_count']}) [{item['severity']}]"
                     console_output.append(line)
                     file_output.append(line)
             else:
@@ -174,43 +209,66 @@ class Reporter:
             console_output.append("")
             file_output.append("")
 
-        if not duplicates:
-            console_output.append(
-                f"{Fore.GREEN}No code duplications found!{Style.RESET_ALL}\n"
+        # Add duplication section
+        if duplicates:
+            # Check if new or legacy format
+            is_group_format = (
+                "num_duplicates" in duplicates[0] and "locations" in duplicates[0]
             )
-            file_output.append("No code duplications found!\n")
-
-            if output_file:
-                output_file.write_text("\n".join(file_output))
+            if is_group_format:
+                console_output.append(
+                    f"{Fore.MAGENTA}Code Duplications:{Style.RESET_ALL}"
+                )
+                file_output.append("Code Duplications:")
+                for i, group in enumerate(duplicates, 1):
+                    cross = " (cross-file)" if group.get("cross_file") else ""
+                    line = f"Clone #{i}: size={group['size']} tokens, count={group['num_duplicates']}{cross}"
+                    console_output.append(line)
+                    file_output.append(line)
+                    for loc in group["locations"]:
+                        loc_line = (
+                            f"    - {loc['file']}:{loc['start_line']}-{loc['end_line']}"
+                        )
+                        console_output.append(loc_line)
+                        file_output.append(loc_line)
+                    snippet = " ".join(group["tokens"][:10]) + (
+                        " ..." if len(group["tokens"]) > 10 else ""
+                    )
+                    console_output.append(f"    Tokens: {snippet}")
+                    file_output.append(f"    Tokens: {snippet}")
+                    console_output.append("")
+                    file_output.append("")
             else:
-                print("\n".join(console_output))
-            return
-
-        for i, dup in enumerate(duplicates, 1):
-            # Console version with colors
-            console_output.append(f"{Fore.YELLOW}Duplication #{i}{Style.RESET_ALL}")
-            console_output.append(f"Similarity: {dup['similarity']:.2%}")
-            console_output.append(f"Size: {dup['size']} tokens")
+                # Legacy format: block1, block2, similarity
+                for i, dup in enumerate(duplicates, 1):
+                    sim = dup.get("similarity", 0)
+                    sim_pct = f"{sim*100:.2f}%" if isinstance(sim, float) else str(sim)
+                    line = f"Duplication #{i}: Similarity: {sim_pct}, size={dup.get('size', '?')} tokens"
+                    console_output.append(line)
+                    file_output.append(line)
+                    for block_key in ("block1", "block2"):
+                        block = dup.get(block_key)
+                        if block:
+                            loc_line = f"    - {block['file']}:{block['start_line']}-{block['end_line']}"
+                            console_output.append(loc_line)
+                            file_output.append(loc_line)
+                    tokens = dup.get("tokens")
+                    if tokens:
+                        snippet = " ".join(tokens[:10]) + (
+                            " ..." if len(tokens) > 10 else ""
+                        )
+                        console_output.append(f"    Tokens: {snippet}")
+                        file_output.append(f"    Tokens: {snippet}")
+                    console_output.append("")
+                    file_output.append("")
+        else:
             console_output.append(
-                f"Location 1: {dup['block1']['file']}:{dup['block1']['start_line']}-{dup['block1']['end_line']}"
+                f"{Fore.GREEN}No code duplications found!{Style.RESET_ALL}"
             )
-            console_output.append(
-                f"Location 2: {dup['block2']['file']}:{dup['block2']['start_line']}-{dup['block2']['end_line']}\n"
-            )
-
-            # File version without colors
-            file_output.append(f"Duplication #{i}")
-            file_output.append(f"Similarity: {dup['similarity']:.2%}")
-            file_output.append(f"Size: {dup['size']} tokens")
-            file_output.append(
-                f"Location 1: {dup['block1']['file']}:{dup['block1']['start_line']}-{dup['block1']['end_line']}"
-            )
-            file_output.append(
-                f"Location 2: {dup['block2']['file']}:{dup['block2']['start_line']}-{dup['block2']['end_line']}\n"
-            )
+            file_output.append("No code duplications found!")
 
         if output_file:
-            output_file.write_text("\n".join(file_output))
+            output_file.write_text("\n".join(file_output), encoding="utf-8")
         else:
             print("\n".join(console_output))
 
@@ -224,6 +282,28 @@ class Reporter:
         todo_fixme: List[Dict[str, Any]] = None,
     ):
         """Generate a JSON report."""
+        # Check if new or legacy format
+        is_group_format = bool(
+            duplicates
+            and "num_duplicates" in duplicates[0]
+            and "locations" in duplicates[0]
+        )
+        if not is_group_format:
+            # Convert legacy format to group-like for JSON output
+            new_duplicates = []
+            for dup in duplicates:
+                group = {
+                    "size": dup.get("size", 0),
+                    "num_duplicates": 2,
+                    "locations": [dup.get("block1", {}), dup.get("block2", {})],
+                    "cross_file": dup.get("block1", {}).get("file")
+                    != dup.get("block2", {}).get("file"),
+                    "tokens": dup.get("tokens", []),
+                    "similarity": dup.get("similarity"),
+                }
+                new_duplicates.append(group)
+            duplicates = new_duplicates
+
         report = {
             "duplicates": duplicates,
             "total_duplications": len(duplicates),
@@ -241,6 +321,6 @@ class Reporter:
         }
         json_str = json.dumps(report, indent=2)
         if output_file:
-            output_file.write_text(json_str)
+            output_file.write_text(json_str, encoding="utf-8")
         else:
             print(json_str)

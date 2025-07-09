@@ -26,47 +26,35 @@ class DuplicateDetector:
     ) -> List[Dict[str, Any]]:
         """
         Find duplicate code blocks based on similarity threshold.
-
         Args:
             code_blocks: List of parsed code blocks with their metadata
-
         Returns:
-            List of duplicate code blocks with their locations and similarity scores
+            List of duplicate groups with their locations, similarity, size, and cross-file flag
         """
-        duplicates = []
+        # Group duplicates by hash of tokens for exact/near-exact matches
+        from collections import defaultdict
 
-        # Sort blocks by size to compare similar-sized blocks first
-        code_blocks.sort(key=lambda x: len(x["tokens"]))
-
-        # Early filtering: skip blocks that are too different in size
-        for i, block1 in enumerate(tqdm(code_blocks, desc="Comparing", leave=False)):
-            size1 = len(block1["tokens"])
-
-            # Skip empty blocks or blocks smaller than min_size
-            if size1 < self.min_size:
+        duplicates_by_hash = defaultdict(list)
+        for block in code_blocks:
+            if len(block["tokens"]) < self.min_size:
                 continue
+            # Use tuple of tokens as a hashable key for grouping
+            key = tuple(block["tokens"])
+            duplicates_by_hash[key].append(block)
 
-            for block2 in code_blocks[i + 1 :]:
-                size2 = len(block2["tokens"])
-
-                # Skip empty blocks or blocks smaller than min_size
-                if size2 < self.min_size:
-                    continue
-
-                # Skip if size difference is too large
-                if abs(size1 - size2) / max(size1, size2) > (1 - self.min_similarity):
-                    continue
-
-                similarity = calculate_similarity(block1["tokens"], block2["tokens"])
-
-                if similarity >= self.min_similarity:
-                    duplicates.append(
-                        {
-                            "block1": block1["location"],
-                            "block2": block2["location"],
-                            "similarity": similarity,
-                            "size": size1,
-                        }
-                    )
-
-        return duplicates
+        groups = []
+        for token_key, blocks in duplicates_by_hash.items():
+            if len(blocks) < 2:
+                continue  # Only interested in actual duplicates
+            files = {b["location"]["file"] for b in blocks}
+            cross_file = len(files) > 1
+            group = {
+                "size": len(token_key),
+                "num_duplicates": len(blocks),
+                "locations": [b["location"] for b in blocks],
+                "cross_file": cross_file,
+                "tokens": token_key,
+                "similarity": 1.0,  # Exact match
+            }
+            groups.append(group)
+        return groups

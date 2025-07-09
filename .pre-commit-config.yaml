@@ -3,3 +3,11 @@ repos:
     rev: 24.3.0
     hooks:
       - id: black
+
+  - repo: local
+    hooks:
+      - id: isort-ignore-failure
+        name: isort (ignore failure)
+        entry: bash -c 'isort "$@" || true' --
+        language: system
+        types: [python]

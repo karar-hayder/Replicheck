@@ -33,5 +33,6 @@ def test_find_duplicates():
     assert len(duplicates) == 1
     assert duplicates[0]["similarity"] == 1.0
     assert duplicates[0]["size"] == 5
-    assert duplicates[0]["block1"]["file"] == "test1.py"
-    assert duplicates[0]["block2"]["file"] == "test2.py"
+    assert len(duplicates[0]["locations"]) == 2
+    files = {loc["file"] for loc in duplicates[0]["locations"]}
+    assert "test1.py" in files and "test2.py" in files

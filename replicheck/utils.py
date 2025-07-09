@@ -82,6 +82,24 @@ def find_files(
     return files
 
 
+def compute_severity(value, threshold):
+    """
+    Compute severity level and emoji based on how much value exceeds threshold.
+    Returns a string like 'Low 🟢', 'Medium 🟡', 'High 🟠', 'Critical 🔴'.
+    """
+    ratio = value / threshold if threshold else 0
+    if ratio >= 3:
+        return "Critical 🔴"
+    elif ratio >= 2:
+        return "High 🟠"
+    elif ratio >= 1.5:
+        return "Medium 🟡"
+    elif ratio >= 1:
+        return "Low 🟢"
+    else:
+        return "None"
+
+
 def analyze_cyclomatic_complexity(file_path: Path, threshold: int = 10):
     """
     Analyze cyclomatic complexity of a Python file using radon.
@@ -109,6 +127,7 @@ def analyze_cyclomatic_complexity(file_path: Path, threshold: int = 10):
                         "endline": getattr(block, "endline", None),
                         "file": str(file_path),
                         "threshold": threshold,
+                        "severity": compute_severity(block.complexity, threshold),
                     }
                 )
     except Exception as e:
@@ -143,6 +162,7 @@ def find_large_files(files, token_threshold=500, top_n=None):
                             "token_count": token_count,
                             "threshold": token_threshold,
                             "top_n": top_n,
+                            "severity": compute_severity(token_count, token_threshold),
                         }
                     )
             except Exception:
@@ -181,6 +201,9 @@ def find_large_classes(file_path, token_threshold=300, top_n=None):
                             "token_count": len(class_tokens),
                             "threshold": token_threshold,
                             "top_n": top_n,
+                            "severity": compute_severity(
+                                len(class_tokens), token_threshold
+                            ),
                         }
                     )
     except Exception:

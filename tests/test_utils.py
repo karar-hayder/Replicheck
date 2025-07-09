@@ -161,3 +161,59 @@ def test_find_todo_fixme_comments(tmp_path):
     texts = [r["text"] for r in results]
     assert any("Refactor" in t for t in texts)
     assert any("broken" in t for t in texts)
+
+
+def test_severity_ranking_complexity():
+    from replicheck.utils import compute_severity
+
+    assert compute_severity(10, 10) == "Low 🟢"
+    assert compute_severity(15, 10) == "Medium 🟡"
+    assert compute_severity(20, 10) == "High 🟠"
+    assert compute_severity(30, 10) == "Critical 🔴"
+    assert compute_severity(5, 10) == "None"
+
+
+def test_analyze_cyclomatic_complexity_severity(tmp_path):
+    code = """
+def foo():
+    if True:
+        for i in range(10):
+            if i % 2 == 0:
+                print(i)
+    else:
+        print('no')
+    for j in range(5):
+        if j > 2:
+            print(j)
+    return 1
+"""
+    file = tmp_path / "complex.py"
+    file.write_text(code)
+    from replicheck.utils import analyze_cyclomatic_complexity
+
+    results = analyze_cyclomatic_complexity(file, threshold=5)
+    assert results
+    assert results[0]["severity"] in {"Low 🟢", "Medium 🟡", "High 🟠", "Critical 🔴"}
+
+
+def test_find_large_files_severity(tmp_path):
+    file = tmp_path / "large.py"
+    file.write_text("def foo():\n    x = 1\n" * 300)
+    from replicheck.utils import find_large_files
+
+    results = find_large_files([file], token_threshold=500)
+    assert results
+    assert results[0]["severity"] in {"Low 🟢", "Medium 🟡", "High 🟠", "Critical 🔴"}
+
+
+def test_find_large_classes_severity(tmp_path):
+    class_code = "class Big:\n    def foo(self):\n        x = 1\n" + (
+        "    def bar(self):\n        y = 2\n" * 150
+    )
+    file = tmp_path / "bigclass.py"
+    file.write_text(class_code)
+    from replicheck.utils import find_large_classes
+
+    results = find_large_classes(file, token_threshold=300)
+    assert results
+    assert results[0]["severity"] in {"Low 🟢", "Medium 🟡", "High ��", "Critical 🔴"}
