@@ -46,9 +46,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-format",
         type=str,
-        choices=["text", "json"],
+        choices=["text", "json", "markdown"],
         default="text",
-        help="Output format (text or json)",
+        help="Output format (text, json, or markdown)",
     )
     parser.add_argument(
         "--output-file",

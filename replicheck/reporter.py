@@ -21,59 +21,86 @@ class Reporter:
     }
 
     def __init__(self, output_format: str = "text"):
-        if output_format not in {"text", "json"}:
-            raise ValueError("Output format must be either 'text' or 'json'")
+        if output_format not in {"text", "json", "markdown"}:
+            raise ValueError(
+                "Output format must be either 'text', 'json', or 'markdown'"
+            )
         self.output_format = output_format
 
-    def generate_report(
-        self,
-        duplicates: List[Dict[str, Any]],
-        output_file: Path = None,
-        complexity_results: List[Dict[str, Any]] = None,
-        large_files: List[Dict[str, Any]] = None,
-        large_classes: List[Dict[str, Any]] = None,
-        todo_fixme: List[Dict[str, Any]] = None,
+    def _format_path(self, file, line=None, mode="plain"):
+        # mode: 'plain', 'markdown', 'terminal'
+        if line is not None:
+            path_str = f"{file}:{line}"
+        else:
+            path_str = file
+        if mode == "markdown":
+            if line is not None:
+                return f"[{file}:{line}]({file}#L{line})"
+            else:
+                return f"[{file}]({file})"
+        elif mode == "terminal":
+            # OSC 8 hyperlink (if supported)
+            # https://gist.github.com/robertknight/2c8c2a6b9236dba7b21c
+            url = f"file://{file}"
+            if line is not None:
+                url += f"#L{line}"
+            return f"\033]8;;{url}\033\\{path_str}\033]8;;\033\\"
+        else:
+            return path_str
+
+    def _generate_summary(
+        self, complexity_results, large_files, large_classes, todo_fixme, duplicates
     ):
-        """
-        Generate a report of code duplications.
+        def count_severity(items, key="severity", level=None):
+            if not items:
+                return 0
+            if level:
+                return sum(1 for x in items if x.get(key) == level)
+            return len(items)
 
-        Args:
-            duplicates: List of duplicate code blocks
-            output_file: Optional path to save the report
-            complexity_results: List of high-complexity functions (optional)
-            large_files: List of large files (optional)
-            large_classes: List of large classes (optional)
-            todo_fixme: List of TODO/FIXME comments (optional)
-        """
-        try:
-            if self.output_format == "json":
-                self._generate_json_report(
-                    duplicates,
-                    output_file,
-                    complexity_results,
-                    large_files,
-                    large_classes,
-                    todo_fixme,
-                )
-            else:
-                self._generate_text_report(
-                    duplicates,
-                    output_file,
-                    complexity_results,
-                    large_files,
-                    large_classes,
-                    todo_fixme,
-                )
-
-            if output_file:
-                print(f"\nReport written to: {output_file}")
-        except Exception as e:
-            print(f"\nError writing report: {e}")
-            # Fallback to console output
-            if self.output_format == "json":
-                self._generate_json_report(duplicates, None)
-            else:
-                self._generate_text_report(duplicates, None)
+        summary = []
+        # Complexity
+        n_complex = count_severity(complexity_results)
+        n_crit_complex = count_severity(complexity_results, level="Critical 🔴")
+        if n_complex:
+            summary.append(
+                f"- {n_complex} high complexity functions ({n_crit_complex} Critical 🔴)"
+            )
+        else:
+            summary.append("- 0 high complexity functions ✅")
+        # Large files
+        n_large_files = count_severity(large_files)
+        n_crit_files = count_severity(large_files, level="Critical 🔴")
+        if n_large_files:
+            summary.append(
+                f"- {n_large_files} large files ({n_crit_files} Critical 🔴)"
+            )
+        else:
+            summary.append("- 0 large files ✅")
+        # Large classes
+        n_large_classes = count_severity(large_classes)
+        n_high_classes = count_severity(large_classes, level="High 🟠")
+        if n_large_classes:
+            summary.append(
+                f"- {n_large_classes} large classes ({n_high_classes} High 🟠)"
+            )
+        else:
+            summary.append("- 0 large classes ✅")
+        # TODO/FIXME
+        n_todo = len(todo_fixme) if todo_fixme else 0
+        summary.append(
+            f"- {n_todo} TODO/FIXME comments"
+            if n_todo
+            else "- 0 TODO/FIXME comments ✅"
+        )
+        # Duplicates
+        n_dupes = len(duplicates) if duplicates else 0
+        summary.append(
+            f"- {n_dupes} duplicate code blocks"
+            if n_dupes
+            else "- 0 duplicate code blocks ✅"
+        )
+        return summary
 
     def _generate_text_report(
         self,
@@ -94,6 +121,18 @@ class Reporter:
             f"\n{Fore.CYAN}Code Duplication Report{Style.RESET_ALL}\n"
         )
         file_output.append("\nCode Duplication Report\n")
+
+        # Add summary section at the top
+        summary_lines = self._generate_summary(
+            complexity_results, large_files, large_classes, todo_fixme, duplicates
+        )
+        console_output.append(f"{Fore.YELLOW}Summary:{Style.RESET_ALL}")
+        file_output.append("Summary:")
+        for line in summary_lines:
+            console_output.append(line)
+            file_output.append(line)
+        console_output.append("")
+        file_output.append("")
 
         # Add cyclomatic complexity section
         if complexity_results is not None:
@@ -324,3 +363,156 @@ class Reporter:
             output_file.write_text(json_str, encoding="utf-8")
         else:
             print(json_str)
+
+    def _generate_markdown_report(
+        self,
+        duplicates: List[Dict[str, Any]],
+        output_file: Path = None,
+        complexity_results: List[Dict[str, Any]] = None,
+        large_files: List[Dict[str, Any]] = None,
+        large_classes: List[Dict[str, Any]] = None,
+        todo_fixme: List[Dict[str, Any]] = None,
+    ):
+        """Generate a Markdown report."""
+        md = []
+        md.append("# Code Duplication Report\n")
+        # Summary
+        md.append("## Summary")
+        for line in self._generate_summary(
+            complexity_results, large_files, large_classes, todo_fixme, duplicates
+        ):
+            md.append(f"- {line}")
+        md.append("")
+        # Complexity
+        if complexity_results:
+            md.append("## High Cyclomatic Complexity Functions")
+            for item in complexity_results:
+                md.append(
+                    f"- {self._format_path(item['file'], item['lineno'], 'markdown')} {item['name']} (complexity: {item['complexity']}) [{item['severity']}]"
+                )
+        # Large files
+        if large_files:
+            md.append("\n## Large Files")
+            for item in large_files:
+                md.append(
+                    f"- {self._format_path(item['file'], None, 'markdown')} (tokens: {item['token_count']}) [{item['severity']}]"
+                )
+        # Large classes
+        if large_classes:
+            md.append("\n## Large Classes")
+            for item in large_classes:
+                md.append(
+                    f"- {self._format_path(item['file'], item['start_line'], 'markdown')} {item['name']} (tokens: {item['token_count']}) [{item['severity']}]"
+                )
+        # TODO/FIXME
+        if todo_fixme:
+            md.append("\n## TODO/FIXME Comments")
+            for item in todo_fixme:
+                md.append(
+                    f"- {self._format_path(item['file'], item['line'], 'markdown')} [{item['type']}] {item['text']}"
+                )
+        # Duplicates
+        if duplicates:
+            md.append("\n## Code Duplications")
+            is_group_format = (
+                "num_duplicates" in duplicates[0] and "locations" in duplicates[0]
+            )
+            if is_group_format:
+                for i, group in enumerate(duplicates, 1):
+                    cross = " (cross-file)" if group.get("cross_file") else ""
+                    md.append(
+                        f"- Clone #{i}: size={group['size']} tokens, count={group['num_duplicates']}{cross}"
+                    )
+                    for loc in group["locations"]:
+                        md.append(
+                            f"    - {self._format_path(loc['file'], loc['start_line'], 'markdown')} - {loc['file']}:{loc['start_line']}-{loc['end_line']}"
+                        )
+                    snippet = " ".join(group["tokens"][:10]) + (
+                        " ..." if len(group["tokens"]) > 10 else ""
+                    )
+                    md.append(f"    Tokens: {snippet}")
+            else:
+                for i, dup in enumerate(duplicates, 1):
+                    sim = dup.get("similarity", 0)
+                    sim_pct = f"{sim*100:.2f}%" if isinstance(sim, float) else str(sim)
+                    md.append(
+                        f"- Duplication #{i}: Similarity: {sim_pct}, size={dup.get('size', '?')} tokens"
+                    )
+                    for block_key in ("block1", "block2"):
+                        block = dup.get(block_key)
+                        if block:
+                            md.append(
+                                f"    - {self._format_path(block['file'], block['start_line'], 'markdown')} - {block['file']}:{block['start_line']}-{block['end_line']}"
+                            )
+                    tokens = dup.get("tokens")
+                    if tokens:
+                        snippet = " ".join(tokens[:10]) + (
+                            " ..." if len(tokens) > 10 else ""
+                        )
+                        md.append(f"    Tokens: {snippet}")
+        else:
+            md.append("No code duplications found!")
+        md_str = "\n".join(md)
+        if output_file:
+            output_file.write_text(md_str, encoding="utf-8")
+        else:
+            print(md_str)
+
+    def generate_report(
+        self,
+        duplicates: List[Dict[str, Any]],
+        output_file: Path = None,
+        complexity_results: List[Dict[str, Any]] = None,
+        large_files: List[Dict[str, Any]] = None,
+        large_classes: List[Dict[str, Any]] = None,
+        todo_fixme: List[Dict[str, Any]] = None,
+    ):
+        """
+        Generate a report of code duplications.
+
+        Args:
+            duplicates: List of duplicate code blocks
+            output_file: Optional path to save the report
+            complexity_results: List of high-complexity functions (optional)
+            large_files: List of large files (optional)
+            large_classes: List of large classes (optional)
+            todo_fixme: List of TODO/FIXME comments (optional)
+        """
+        try:
+            if self.output_format == "json":
+                self._generate_json_report(
+                    duplicates,
+                    output_file,
+                    complexity_results,
+                    large_files,
+                    large_classes,
+                    todo_fixme,
+                )
+            elif self.output_format == "markdown":
+                self._generate_markdown_report(
+                    duplicates,
+                    output_file,
+                    complexity_results,
+                    large_files,
+                    large_classes,
+                    todo_fixme,
+                )
+            else:
+                self._generate_text_report(
+                    duplicates,
+                    output_file,
+                    complexity_results,
+                    large_files,
+                    large_classes,
+                    todo_fixme,
+                )
+
+            if output_file:
+                print(f"\nReport written to: {output_file}")
+        except Exception as e:
+            print(f"\nError writing report: {e}")
+            # Fallback to console output
+            if self.output_format == "json":
+                self._generate_json_report(duplicates, None)
+            else:
+                self._generate_text_report(duplicates, None)

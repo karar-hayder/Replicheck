@@ -485,3 +485,83 @@ def test_reporter_json_with_duplication_group(tmp_path):
     assert content["duplicates"][0]["num_duplicates"] == 3
     assert content["duplicates"][0]["cross_file"] is True
     assert len(content["duplicates"][0]["locations"]) == 3
+
+
+def test_reporter_markdown_output(tmp_path):
+    reporter = Reporter(output_format="markdown")
+    duplicates = [
+        {
+            "size": 10,
+            "num_duplicates": 2,
+            "locations": [
+                {"file": "file1.py", "start_line": 1, "end_line": 5},
+                {"file": "file2.py", "start_line": 10, "end_line": 14},
+            ],
+            "cross_file": True,
+            "tokens": ["def", "foo", "(", ")", ":", "x", "=", "1", "y", "=", "2"],
+        }
+    ]
+    complexity_results = [
+        {
+            "name": "foo",
+            "complexity": 12,
+            "lineno": 2,
+            "endline": 15,
+            "file": "file1.py",
+            "threshold": 10,
+            "severity": "Low 🟢",
+        },
+    ]
+    large_files = [
+        {
+            "file": "big.py",
+            "token_count": 600,
+            "threshold": 500,
+            "top_n": 10,
+            "severity": "Critical 🔴",
+        },
+    ]
+    large_classes = [
+        {
+            "name": "BigClass",
+            "file": "big.py",
+            "start_line": 1,
+            "end_line": 100,
+            "token_count": 350,
+            "threshold": 300,
+            "top_n": 10,
+            "severity": "High 🟠",
+        },
+    ]
+    todo_fixme = [
+        {"file": "a.py", "line": 2, "type": "TODO", "text": "Refactor this"},
+    ]
+    output_file = tmp_path / "report.md"
+    reporter.generate_report(
+        duplicates,
+        output_file,
+        complexity_results=complexity_results,
+        large_files=large_files,
+        large_classes=large_classes,
+        todo_fixme=todo_fixme,
+    )
+    content = output_file.read_text(encoding="utf-8")
+    # Check summary
+    assert "## Summary" in content
+    assert "- 1 high complexity functions (0 Critical 🔴)" in content
+    assert "- 1 large files (1 Critical 🔴)" in content
+    assert "- 1 large classes (1 High 🟠)" in content
+    assert "- 1 TODO/FIXME comments" in content
+    assert "- 1 duplicate code blocks" in content
+    # Check markdown links
+    assert "[file1.py:2](file1.py#L2)" in content
+    assert "[big.py](big.py)" in content
+    assert "[big.py:1](big.py#L1)" in content
+    assert "[a.py:2](a.py#L2)" in content
+    # Check duplication section
+    assert "## Code Duplications" in content
+    assert "Clone #1: size=10 tokens, count=2 (cross-file)" in content
+    assert (
+        "[file1.py:1](file1.py#L1)" in content
+        or "[file2.py:10](file2.py#L10)" in content
+    )
