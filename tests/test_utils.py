@@ -59,3 +59,105 @@ def test_find_files_ignore_dirs(tmp_path):
     found = {f.name for f in files}
     assert "e.py" in found
     assert "d.py" not in found
+
+
+def test_analyze_cyclomatic_complexity_detects_high(tmp_path):
+    code = """
+def foo():
+    if True:
+        for i in range(10):
+            if i % 2 == 0:
+                print(i)
+    else:
+        print('no')
+    for j in range(5):
+        if j > 2:
+            print(j)
+    return 1
+"""
+    file = tmp_path / "complex.py"
+    file.write_text(code)
+    from replicheck.utils import analyze_cyclomatic_complexity
+
+    results = analyze_cyclomatic_complexity(file, threshold=5)
+    assert results, "Should detect at least one high-complexity function"
+    assert results[0]["name"] == "foo"
+    assert results[0]["complexity"] >= 5
+    assert results[0]["file"] == str(file)
+    assert results[0]["threshold"] == 5
+
+
+def test_analyze_cyclomatic_complexity_none_found(tmp_path):
+    code = """
+def bar():
+    return 1
+"""
+    file = tmp_path / "simple.py"
+    file.write_text(code)
+    from replicheck.utils import analyze_cyclomatic_complexity
+
+    results = analyze_cyclomatic_complexity(file, threshold=5)
+    assert results == [], "Should return empty list if no function exceeds threshold"
+
+
+def test_find_large_files(tmp_path):
+    code = """
+def foo():
+    pass
+"""
+    # Create a file with many tokens
+    file = tmp_path / "large.py"
+    file.write_text(
+        "def foo():\n    x = 1\n" * 300
+    )  # 300 lines, each with several tokens
+    from replicheck.utils import find_large_files
+
+    results = find_large_files([file], token_threshold=500)
+    assert results, "Should detect the file as large"
+    assert results[0]["file"] == str(file)
+    assert results[0]["token_count"] >= 500
+    assert results[0]["threshold"] == 500
+    assert results[0]["top_n"] is None or isinstance(results[0]["top_n"], int)
+
+
+def test_find_large_classes(tmp_path):
+    code = """
+class Big:
+    def foo(self):
+        x = 1
+"""
+    # Create a class with many tokens
+    class_code = "class Big:\n    def foo(self):\n        x = 1\n" + (
+        "    def bar(self):\n        y = 2\n" * 150
+    )
+    file = tmp_path / "bigclass.py"
+    file.write_text(class_code)
+    from replicheck.utils import find_large_classes
+
+    results = find_large_classes(file, token_threshold=300)
+    assert results, "Should detect the class as large"
+    assert results[0]["name"] == "Big"
+    assert results[0]["token_count"] >= 300
+    assert results[0]["threshold"] == 300
+    assert results[0]["top_n"] is None or isinstance(results[0]["top_n"], int)
+
+
+def test_find_todo_fixme_comments(tmp_path):
+    code = """
+# TODO: Refactor this function
+# FIXME this is broken
+# just a comment
+# todo lowercase
+# fixme: also lowercase
+    """
+    file = tmp_path / "todo.py"
+    file.write_text(code)
+    from replicheck.utils import find_todo_fixme_comments
+
+    results = find_todo_fixme_comments([file])
+    assert len(results) == 4
+    types = {r["type"] for r in results}
+    assert "TODO" in types and "FIXME" in types
+    texts = [r["text"] for r in results]
+    assert any("Refactor" in t for t in texts)
+    assert any("broken" in t for t in texts)

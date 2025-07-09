@@ -20,10 +20,7 @@ dependencies = [
     "tqdm>=4.66.2"
 ]
 keywords = ["duplicate-code", "code-analysis", "static-analysis", "refactoring", "python"]
-urls = { 
-  "Homepage" = "https://github.com/kararhaider/replicheck",
-  "Repository" = "https://github.com/kararhaider/replicheck"
-}
+urls = { Homepage = "https://github.com/kararhaider/replicheck", Repository = "https://github.com/kararhaider/replicheck" }
 
 [project.optional-dependencies]
 dev = [

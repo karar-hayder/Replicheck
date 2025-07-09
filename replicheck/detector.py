@@ -40,7 +40,6 @@ class DuplicateDetector:
 
         # Early filtering: skip blocks that are too different in size
         for i, block1 in enumerate(tqdm(code_blocks, desc="Comparing", leave=False)):
-            print(block1)
             size1 = len(block1["tokens"])
 
             # Skip empty blocks or blocks smaller than min_size

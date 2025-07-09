@@ -21,3 +21,4 @@ python-dotenv==1.0.0
 PyYAML==6.0.2
 tqdm==4.67.1
 virtualenv==20.31.2
+radon==6.0.1

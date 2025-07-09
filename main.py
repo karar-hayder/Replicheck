@@ -11,7 +11,13 @@ from typing import Optional
 from replicheck.detector import DuplicateDetector
 from replicheck.parser import CodeParser
 from replicheck.reporter import Reporter
-from replicheck.utils import find_files
+from replicheck.utils import (
+    analyze_cyclomatic_complexity,
+    find_files,
+    find_large_classes,
+    find_large_files,
+    find_todo_fixme_comments,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,6 +62,30 @@ def parse_args() -> argparse.Namespace:
         default=[".git", ".venv", "venv", "env", "ENV", "build", "dist"],
         help="Directories to ignore",
     )
+    parser.add_argument(
+        "--complexity-threshold",
+        type=int,
+        default=10,
+        help="Cyclomatic complexity threshold to flag functions (default: 10)",
+    )
+    parser.add_argument(
+        "--large-file-threshold",
+        type=int,
+        default=500,
+        help="Token count threshold to flag large files (default: 500)",
+    )
+    parser.add_argument(
+        "--large-class-threshold",
+        type=int,
+        default=300,
+        help="Token count threshold to flag large classes (default: 300)",
+    )
+    parser.add_argument(
+        "--top-n-large",
+        type=int,
+        default=10,
+        help="Show only the top N largest files/classes (default: 10, 0=all)",
+    )
 
     return parser.parse_args()
 
@@ -67,6 +97,10 @@ def main(
     output_format: str = "text",
     output_file: Optional[str] = None,
     ignore_dirs: Optional[list[str]] = None,
+    complexity_threshold: int = 10,
+    large_file_threshold: int = 500,
+    large_class_threshold: int = 300,
+    top_n_large: int = 10,
 ) -> int:
     """
     Main entry point for the Replicheck tool.
@@ -108,12 +142,81 @@ def main(
 
         print(f"Found {len(code_blocks)} code blocks to analyze")
 
+        high_complexity = []
+        for file in files:
+            if str(file).endswith(".py"):
+                for result in analyze_cyclomatic_complexity(
+                    file, threshold=complexity_threshold
+                ):
+                    result["threshold"] = complexity_threshold
+                    high_complexity.append(result)
+        if high_complexity:
+            print(
+                f"\nHigh cyclomatic complexity functions (>= {complexity_threshold}):"
+            )
+            for item in high_complexity:
+                print(
+                    f"- {item['file']}:{item['lineno']} {item['name']} (complexity: {item['complexity']})"
+                )
+        else:
+            print(
+                f"\nNo high cyclomatic complexity functions found (threshold: {complexity_threshold})."
+            )
+
+        large_files = find_large_files(
+            files, token_threshold=large_file_threshold, top_n=top_n_large
+        )
+        # Sort and filter top N
+        large_files = sorted(large_files, key=lambda x: x["token_count"], reverse=True)
+        if top_n_large > 0:
+            large_files = large_files[:top_n_large]
+        if large_files:
+            print(f"\nLarge files (>= {large_file_threshold} tokens):")
+            for item in large_files:
+                print(f"- {item['file']} (tokens: {item['token_count']})")
+        else:
+            print(f"\nNo large files found (threshold: {large_file_threshold} tokens).")
+
+        # Large class detection
+        large_classes = []
+        for file in files:
+            if str(file).endswith(".py"):
+                large_classes.extend(
+                    find_large_classes(
+                        file, token_threshold=large_class_threshold, top_n=top_n_large
+                    )
+                )
+        # Sort and filter top N
+        large_classes = sorted(
+            large_classes, key=lambda x: x["token_count"], reverse=True
+        )
+        if top_n_large > 0:
+            large_classes = large_classes[:top_n_large]
+        if large_classes:
+            print(f"\nLarge classes (>= {large_class_threshold} tokens):")
+            for item in large_classes:
+                print(
+                    f"- {item['file']}:{item['start_line']} {item['name']} (tokens: {item['token_count']})"
+                )
+        else:
+            print(
+                f"\nNo large classes found (threshold: {large_class_threshold} tokens)."
+            )
+
         print("Analyzing code blocks...")
         duplicates = detector.find_duplicates(code_blocks)
 
         # Generate report
         output_path = Path(output_file) if output_file else None
-        reporter.generate_report(duplicates, output_path)
+        todo_fixme_comments = find_todo_fixme_comments(files)
+        reporter.generate_report(
+            duplicates,
+            output_path,
+            complexity_results=high_complexity,
+            large_files=large_files,
+            large_classes=large_classes,
+            todo_fixme=todo_fixme_comments,
+        )
 
         return 0
 
@@ -132,5 +235,9 @@ if __name__ == "__main__":
             output_format=args.output_format,
             output_file=args.output_file,
             ignore_dirs=args.ignore_dirs,
+            complexity_threshold=args.complexity_threshold,
+            large_file_threshold=args.large_file_threshold,
+            large_class_threshold=args.large_class_threshold,
+            top_n_large=args.top_n_large,
         )
     )

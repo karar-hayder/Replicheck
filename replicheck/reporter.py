@@ -18,7 +18,13 @@ class Reporter:
         self.output_format = output_format
 
     def generate_report(
-        self, duplicates: List[Dict[str, Any]], output_file: Path = None
+        self,
+        duplicates: List[Dict[str, Any]],
+        output_file: Path = None,
+        complexity_results: List[Dict[str, Any]] = None,
+        large_files: List[Dict[str, Any]] = None,
+        large_classes: List[Dict[str, Any]] = None,
+        todo_fixme: List[Dict[str, Any]] = None,
     ):
         """
         Generate a report of code duplications.
@@ -26,12 +32,30 @@ class Reporter:
         Args:
             duplicates: List of duplicate code blocks
             output_file: Optional path to save the report
+            complexity_results: List of high-complexity functions (optional)
+            large_files: List of large files (optional)
+            large_classes: List of large classes (optional)
+            todo_fixme: List of TODO/FIXME comments (optional)
         """
         try:
             if self.output_format == "json":
-                self._generate_json_report(duplicates, output_file)
+                self._generate_json_report(
+                    duplicates,
+                    output_file,
+                    complexity_results,
+                    large_files,
+                    large_classes,
+                    todo_fixme,
+                )
             else:
-                self._generate_text_report(duplicates, output_file)
+                self._generate_text_report(
+                    duplicates,
+                    output_file,
+                    complexity_results,
+                    large_files,
+                    large_classes,
+                    todo_fixme,
+                )
 
             if output_file:
                 print(f"\nReport written to: {output_file}")
@@ -44,7 +68,13 @@ class Reporter:
                 self._generate_text_report(duplicates, None)
 
     def _generate_text_report(
-        self, duplicates: List[Dict[str, Any]], output_file: Path = None
+        self,
+        duplicates: List[Dict[str, Any]],
+        output_file: Path = None,
+        complexity_results: List[Dict[str, Any]] = None,
+        large_files: List[Dict[str, Any]] = None,
+        large_classes: List[Dict[str, Any]] = None,
+        todo_fixme: List[Dict[str, Any]] = None,
     ):
         """Generate a human-readable text report."""
         # Create two versions: one for console (with colors) and one for file (plain text)
@@ -56,6 +86,93 @@ class Reporter:
             f"\n{Fore.CYAN}Code Duplication Report{Style.RESET_ALL}\n"
         )
         file_output.append("\nCode Duplication Report\n")
+
+        # Add cyclomatic complexity section
+        if complexity_results is not None:
+            if complexity_results:
+                console_output.append(
+                    f"{Fore.MAGENTA}High Cyclomatic Complexity Functions (threshold: >= {complexity_results[0].get('threshold', 'N/A')}):{Style.RESET_ALL}"
+                )
+                file_output.append(
+                    f"High Cyclomatic Complexity Functions (threshold: >= {complexity_results[0].get('threshold', 'N/A')}):"
+                )
+                for item in complexity_results:
+                    line = f"- {item['file']}:{item['lineno']} {item['name']} (complexity: {item['complexity']})"
+                    console_output.append(line)
+                    file_output.append(line)
+            else:
+                console_output.append(
+                    f"{Fore.GREEN}No high cyclomatic complexity functions found.{Style.RESET_ALL}"
+                )
+                file_output.append("No high cyclomatic complexity functions found.")
+            console_output.append("")
+            file_output.append("")
+        # Add large files section
+        if large_files is not None:
+            if large_files:
+                threshold = (
+                    large_files[0].get("threshold", "N/A") if large_files else "N/A"
+                )
+                top_n = large_files[0].get("top_n", "N/A") if large_files else "N/A"
+                console_output.append(
+                    f"{Fore.MAGENTA}Large Files (threshold: >= {threshold}, top N: {top_n}):{Style.RESET_ALL}"
+                )
+                file_output.append(
+                    f"Large Files (threshold: >= {threshold}, top N: {top_n}):"
+                )
+                for item in large_files:
+                    line = f"- {item['file']} (tokens: {item['token_count']})"
+                    console_output.append(line)
+                    file_output.append(line)
+            else:
+                console_output.append(
+                    f"{Fore.GREEN}No large files found.{Style.RESET_ALL}"
+                )
+                file_output.append("No large files found.")
+            console_output.append("")
+            file_output.append("")
+        # Add large classes section
+        if large_classes is not None:
+            if large_classes:
+                threshold = (
+                    large_classes[0].get("threshold", "N/A") if large_classes else "N/A"
+                )
+                top_n = large_classes[0].get("top_n", "N/A") if large_classes else "N/A"
+                console_output.append(
+                    f"{Fore.MAGENTA}Large Classes (threshold: >= {threshold}, top N: {top_n}):{Style.RESET_ALL}"
+                )
+                file_output.append(
+                    f"Large Classes (threshold: >= {threshold}, top N: {top_n}):"
+                )
+                for item in large_classes:
+                    line = f"- {item['file']}:{item['start_line']} {item['name']} (tokens: {item['token_count']})"
+                    console_output.append(line)
+                    file_output.append(line)
+            else:
+                console_output.append(
+                    f"{Fore.GREEN}No large classes found.{Style.RESET_ALL}"
+                )
+                file_output.append("No large classes found.")
+            console_output.append("")
+            file_output.append("")
+        # Add TODO/FIXME section
+        if todo_fixme is not None:
+            if todo_fixme:
+                console_output.append(
+                    f"{Fore.MAGENTA}TODO/FIXME Comments:{Style.RESET_ALL}"
+                )
+                file_output.append("TODO/FIXME Comments:")
+                for item in todo_fixme:
+                    line = f"- {item['file']}:{item['line']} [{item['type']}] {item['text']}"
+                    console_output.append(line)
+                    file_output.append(line)
+            else:
+                console_output.append(
+                    f"{Fore.GREEN}No TODO/FIXME comments found.{Style.RESET_ALL}"
+                )
+                file_output.append("No TODO/FIXME comments found.")
+            console_output.append("")
+            file_output.append("")
 
         if not duplicates:
             console_output.append(
@@ -98,12 +215,31 @@ class Reporter:
             print("\n".join(console_output))
 
     def _generate_json_report(
-        self, duplicates: List[Dict[str, Any]], output_file: Path = None
+        self,
+        duplicates: List[Dict[str, Any]],
+        output_file: Path = None,
+        complexity_results: List[Dict[str, Any]] = None,
+        large_files: List[Dict[str, Any]] = None,
+        large_classes: List[Dict[str, Any]] = None,
+        todo_fixme: List[Dict[str, Any]] = None,
     ):
         """Generate a JSON report."""
-        report = {"duplicates": duplicates, "total_duplications": len(duplicates)}
+        report = {
+            "duplicates": duplicates,
+            "total_duplications": len(duplicates),
+            "high_cyclomatic_complexity": complexity_results or [],
+            "large_files": large_files or [],
+            "large_classes": large_classes or [],
+            "large_file_threshold": (
+                large_files[0].get("threshold", "N/A") if large_files else None
+            ),
+            "large_class_threshold": (
+                large_classes[0].get("threshold", "N/A") if large_classes else None
+            ),
+            "top_n_large": large_files[0].get("top_n", "N/A") if large_files else None,
+            "todo_fixme_comments": todo_fixme or [],
+        }
         json_str = json.dumps(report, indent=2)
-
         if output_file:
             output_file.write_text(json_str)
         else:
