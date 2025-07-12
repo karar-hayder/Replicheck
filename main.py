@@ -59,7 +59,25 @@ def parse_args() -> argparse.Namespace:
         "--ignore-dirs",
         type=str,
         nargs="+",
-        default=[".git", ".venv", "venv", "env", "ENV", "build", "dist"],
+        default=[
+            ".git",
+            ".venv",
+            "venv",
+            "env",
+            "ENV",
+            "build",
+            "dist",
+            "node_modules",
+            "__pycache__",
+            ".pytest_cache",
+            "coverage",
+            "vendor",
+            "bower_components",
+            ".vscode",
+            ".idea",
+            ".vs",
+            ".next",
+        ],
         help="Directories to ignore",
     )
     parser.add_argument(
@@ -86,7 +104,12 @@ def parse_args() -> argparse.Namespace:
         default=10,
         help="Show only the top N largest files/classes (default: 10, 0=all)",
     )
-
+    parser.add_argument(
+        "--extensions",
+        type=str,
+        nargs="+",
+        help="File extensions to include (default: .py .js .jsx)",
+    )
     return parser.parse_args()
 
 
@@ -101,6 +124,7 @@ def main(
     large_file_threshold: int = 500,
     large_class_threshold: int = 300,
     top_n_large: int = 10,
+    extensions: Optional[list[str]] = None,
 ) -> int:
     """
     Main entry point for the Replicheck tool.
@@ -127,8 +151,16 @@ def main(
         detector = DuplicateDetector(min_similarity=min_similarity, min_size=min_size)
         reporter = Reporter(output_format=output_format)
 
+        # Determine extensions
+        if extensions is None:
+            extensions_set = {".py", ".js", ".jsx"}
+        else:
+            extensions_set = set(
+                e if e.startswith(".") else f".{e}" for e in extensions
+            )
+
         print("Finding files...")
-        files = find_files(path, ignore_dirs=ignore_dirs)
+        files = find_files(path, extensions=extensions_set, ignore_dirs=ignore_dirs)
         print(f"Found {len(files)} files to analyze")
 
         print("Parsing files...")
@@ -239,5 +271,6 @@ if __name__ == "__main__":
             large_file_threshold=args.large_file_threshold,
             large_class_threshold=args.large_class_threshold,
             top_n_large=args.top_n_large,
+            extensions=args.extensions,
         )
     )
