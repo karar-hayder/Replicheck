@@ -216,4 +216,115 @@ def test_find_large_classes_severity(tmp_path):
 
     results = find_large_classes(file, token_threshold=300)
     assert results
-    assert results[0]["severity"] in {"Low 🟢", "Medium 🟡", "High ��", "Critical 🔴"}
+    assert results[0]["severity"] in {"Low 🟢", "Medium 🟡", "High 🟠", "Critical 🔴"}
+
+
+def test_analyze_cyclomatic_complexity_exception_handling(tmp_path):
+    """Test that analyze_cyclomatic_complexity handles exceptions gracefully."""
+    from replicheck.utils import analyze_cyclomatic_complexity
+
+    # Test with a file that doesn't exist
+    non_existent_file = tmp_path / "nonexistent.py"
+    results = analyze_cyclomatic_complexity(non_existent_file, threshold=5)
+    assert results == []
+
+    # Test with a file that has syntax errors
+    syntax_error_file = tmp_path / "syntax_error.py"
+    syntax_error_file.write_text(
+        "def foo(\n    return 1  # Missing closing parenthesis"
+    )
+
+    results = analyze_cyclomatic_complexity(syntax_error_file, threshold=5)
+    assert results == []
+
+
+def test_find_large_files_exception_handling(tmp_path):
+    """Test that find_large_files handles exceptions gracefully."""
+    from replicheck.utils import find_large_files
+
+    # Test with a file that doesn't exist
+    non_existent_file = tmp_path / "nonexistent.py"
+    results = find_large_files([non_existent_file], token_threshold=500)
+    assert results == []
+
+    # Test with a non-Python file
+    non_python_file = tmp_path / "test.txt"
+    non_python_file.write_text("This is not Python code")
+    results = find_large_files([non_python_file], token_threshold=500)
+    assert results == []
+
+    # Test with a file that has syntax errors
+    syntax_error_file = tmp_path / "syntax_error.py"
+    syntax_error_file.write_text(
+        "def foo(\n    return 1  # Missing closing parenthesis"
+    )
+
+    results = find_large_files([syntax_error_file], token_threshold=500)
+    assert isinstance(results, list)
+
+
+def test_find_large_classes_exception_handling(tmp_path):
+    """Test that find_large_classes handles exceptions gracefully."""
+    from replicheck.utils import find_large_classes
+
+    # Test with a file that doesn't exist
+    non_existent_file = tmp_path / "nonexistent.py"
+    results = find_large_classes(non_existent_file, token_threshold=300)
+    assert results == []
+
+    # Test with a file that has syntax errors
+    syntax_error_file = tmp_path / "syntax_error.py"
+    syntax_error_file.write_text(
+        "class Test(\n    def __init__(self):\n        pass  # Missing closing parenthesis"
+    )
+
+    results = find_large_classes(syntax_error_file, token_threshold=300)
+    assert results == []
+
+
+def test_find_todo_fixme_comments_exception_handling(tmp_path):
+    """Test that find_todo_fixme_comments handles exceptions gracefully."""
+    from replicheck.utils import find_todo_fixme_comments
+
+    # Test with a file that doesn't exist
+    non_existent_file = tmp_path / "nonexistent.py"
+    results = find_todo_fixme_comments([non_existent_file])
+    assert results == []
+
+    # Test with a non-Python file
+    non_python_file = tmp_path / "test.txt"
+    non_python_file.write_text("# TODO: This won't be found")
+    results = find_todo_fixme_comments([non_python_file])
+    assert results == []
+
+    # Test with a file that has encoding issues
+    encoding_error_file = tmp_path / "encoding_error.py"
+    # Create a file with invalid encoding
+    with open(encoding_error_file, "wb") as f:
+        f.write(b"# TODO: This has invalid encoding \xff\xfe")
+
+    results = find_todo_fixme_comments([encoding_error_file])
+    assert isinstance(results, list)
+
+
+def test_compute_severity_edge_cases():
+    """Test compute_severity with edge cases."""
+    from replicheck.utils import compute_severity
+
+    # Test with zero threshold
+    assert compute_severity(0, 0) == "None"
+    assert compute_severity(10, 0) == "None"
+
+    # Test with negative values
+    assert compute_severity(-5, 10) == "None"
+    assert compute_severity(5, -10) == "None"
+
+    # Test with very large ratios
+    assert compute_severity(100, 1) == "Critical 🔴"
+    assert compute_severity(50, 1) == "Critical 🔴"
+
+    # Test exact threshold values
+    assert compute_severity(10, 10) == "Low 🟢"
+    assert compute_severity(15, 10) == "Medium 🟡"
+    assert compute_severity(20, 10) == "High 🟠"
+    assert compute_severity(30, 10) == "Critical 🔴"
