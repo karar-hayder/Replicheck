@@ -140,6 +140,10 @@ If you want to run the hooks manually on all files:
 pre-commit run --all-files
 ```
 
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines before submitting issues or pull requests.
+
 ## License
 
 This project is licensed under the [Apache License 2.0](LICENSE).
