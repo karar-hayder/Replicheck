@@ -328,3 +328,55 @@ def test_compute_severity_edge_cases():
     assert compute_severity(15, 10) == "Medium 🟡"
     assert compute_severity(20, 10) == "High 🟠"
     assert compute_severity(30, 10) == "Critical 🔴"
+
+
+def test_find_large_files_js(tmp_path):
+    js_code = """
+    function foo() { var x = 1; var y = 2; }
+    class Bar { method() { return 42; } }
+    // Add more tokens to exceed threshold
+    """ + (
+        "var a = 1;\n" * 100
+    )
+    file = tmp_path / "big.js"
+    file.write_text(js_code)
+    from replicheck.utils import find_large_files
+
+    results = find_large_files([file], token_threshold=50)
+    assert results, "Should detect the JS file as large"
+    assert results[0]["file"].endswith("big.js")
+    assert results[0]["token_count"] >= 50
+
+
+def test_find_large_classes_js(tmp_path):
+    # Add many methods inside the class to exceed the threshold
+    methods = "\n".join([f"  method{i}() {{ var x = {i}; }}" for i in range(60)])
+    js_code = f"""
+    class BigClass {{
+    {methods}
+    }}
+    """
+    file = tmp_path / "bigclass.js"
+    file.write_text(js_code)
+    from replicheck.utils import find_large_classes
+
+    results = find_large_classes(file, token_threshold=50)
+    assert results, "Should detect the JS class as large"
+    assert results[0]["name"] == "BigClass"
+    assert results[0]["token_count"] >= 50
+
+
+def test_analyze_js_cyclomatic_complexity(tmp_path):
+    js_code = """
+    function foo(x) { if (x) { return 1; } else { return 2; } }
+    function bar() { for (var i=0;i<10;i++) { if (i%2) { continue; } } }
+    """
+    file = tmp_path / "complex.js"
+    file.write_text(js_code)
+    from replicheck.utils import analyze_js_cyclomatic_complexity
+
+    results = analyze_js_cyclomatic_complexity(file, threshold=2)
+    assert results, "Should detect at least one high-complexity function"
+    assert any(r["name"] == "bar" or r["name"] == "foo" for r in results)
+    assert all("complexity" in r for r in results)
+    assert all("file" in r for r in results)

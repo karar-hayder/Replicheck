@@ -13,6 +13,7 @@ from replicheck.parser import CodeParser
 from replicheck.reporter import Reporter
 from replicheck.utils import (
     analyze_cyclomatic_complexity,
+    analyze_js_cyclomatic_complexity,
     find_files,
     find_large_classes,
     find_large_files,
@@ -178,6 +179,12 @@ def main(
         for file in files:
             if str(file).endswith(".py"):
                 for result in analyze_cyclomatic_complexity(
+                    file, threshold=complexity_threshold
+                ):
+                    result["threshold"] = complexity_threshold
+                    high_complexity.append(result)
+            elif str(file).endswith(".js") or str(file).endswith(".jsx"):
+                for result in analyze_js_cyclomatic_complexity(
                     file, threshold=complexity_threshold
                 ):
                     result["threshold"] = complexity_threshold

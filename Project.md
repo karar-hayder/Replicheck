@@ -8,7 +8,7 @@
 
 - **Duplicate Detection:** Finds duplicate code blocks within user-specified directories.
 - **Configurable Thresholds:** Allows users to set the minimum similarity threshold and minimum code block size for comparison.
-- **Language Support:** Currently supports Python code natively. JavaScript support is planned but not yet implemented.
+- **Language Support:** Supports Python and JavaScript/JSX code natively.
 - **Directory and File Filtering:** Ignores virtual environments and user-specified directories. Users can also specify which file extensions to analyze.
 - **Reporting:** Generates detailed reports in either text or JSON format, with the option to output to a file or the console.
 - **Robust Testing:** The project boasts 98%+ test coverage and robust error handling.
@@ -19,7 +19,7 @@
 - **CLI Entrypoint:** `cli.py` provides a command-line interface for users to run Replicheck with various options.
 - **Core Modules:**
   - `replicheck/config.py`: Handles configuration and validation.
-  - `replicheck/parser.py`: Parses code files and extracts code blocks (Python fully supported, JavaScript placeholder).
+  - `replicheck/parser.py`: Parses code files and extracts code blocks (Python and JavaScript/JSX fully supported).
   - `replicheck/detector.py`: Contains the logic for detecting duplicate code blocks using a Jaccard similarity metric.
   - `replicheck/reporter.py`: Handles report generation in text and JSON formats.
   - `replicheck/utils.py`: Provides utility functions for file discovery and similarity calculation.
@@ -54,10 +54,10 @@ Key options:
 
 ## What Can Be Added or Improved
 
-### 1. **JavaScript Parsing**
+### 1. **JavaScript/JSX Parsing**
 
-- **Current State:** The parser for JavaScript is a placeholder (`TODO: Implement JavaScript parsing`).
-- **Improvement:** Implement a real JavaScript parser, possibly using a library like `esprima` (via subprocess or a Python port), to extract functions and classes from `.js` files.
+- **Current State:** JavaScript and JSX parsing is implemented using tree-sitter and typhonjs-escomplex for metrics.
+- **Improvement:** Add support for TypeScript/TSX and more advanced metrics as needed.
 
 ### 2. **Multi-language Support**
 
@@ -101,8 +101,8 @@ Key options:
 
 ### 10. **Better JavaScript/TypeScript Support**
 
-- **Current State:** Placeholder for JS, no TS support.
-- **Improvement:** Use a robust parser for JS/TS and add tests for these languages.
+- **Current State:** JS/JSX support is implemented. No TS/TSX support yet.
+- **Improvement:** Add robust parser and metrics for TS/TSX and add tests for these languages.
 
 ## Notable Limitations
 
