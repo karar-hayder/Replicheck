@@ -136,16 +136,70 @@ def analyze_cyclomatic_complexity(file_path: Path, threshold: int = 10):
     return results
 
 
+def analyze_js_cyclomatic_complexity(file_path: Path, threshold: int = 10):
+    """
+    Analyze cyclomatic complexity of a JS file using typhonjs-escomplex via Node.js helper script.
+
+    Args:
+        file_path: Path to the JS file
+        threshold: Complexity threshold to flag
+
+    Returns:
+        List of dicts with function/method name, complexity, and location if above threshold
+    """
+    import subprocess
+    import json
+    import sys
+    from pathlib import Path
+
+    results = []
+    helper_path = Path(__file__).parent.parent / "utils" / "helpers.js"
+    try:
+        proc = subprocess.run(
+            ["node", str(helper_path), str(file_path)],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if proc.returncode != 0:
+            return []
+        functions = json.loads(proc.stdout)
+        for fn in functions:
+            if fn.get("complexity", 0) >= threshold:
+                results.append(
+                    {
+                        "name": fn.get("name", "<anonymous>"),
+                        "complexity": fn.get("complexity"),
+                        "lineno": fn.get("lineno"),
+                        "endline": fn.get("endline"),
+                        "file": str(file_path),
+                        "threshold": threshold,
+                        "severity": compute_severity(
+                            fn.get("complexity", 0), threshold
+                        ),
+                    }
+                )
+    except Exception:
+        pass
+    return results
+
+
 def find_large_files(files, token_threshold=500, top_n=None):
     """
     Find files whose total token count exceeds the threshold.
     Returns a list of dicts with file path and token count, including threshold and top_n for reporting.
     """
     import tokenize
+    import re
+
+    def js_tokenize(code):
+        # Simple JS tokenizer: split on word boundaries and symbols
+        return re.findall(r"\w+|[^\s\w]", code, re.UNICODE)
 
     large_files = []
     for file_path in files:
-        if str(file_path).endswith(".py"):
+        suffix = str(file_path).lower()
+        if suffix.endswith(".py"):
             try:
                 with open(file_path, "rb") as f:
                     tokens = list(tokenize.tokenize(f.readline))
@@ -167,47 +221,99 @@ def find_large_files(files, token_threshold=500, top_n=None):
                     )
             except Exception:
                 pass
+        elif suffix.endswith(".js") or suffix.endswith(".jsx"):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    code = f.read()
+                tokens = js_tokenize(code)
+                token_count = len(tokens)
+                if token_count >= token_threshold:
+                    large_files.append(
+                        {
+                            "file": str(file_path),
+                            "token_count": token_count,
+                            "threshold": token_threshold,
+                            "top_n": top_n,
+                            "severity": compute_severity(token_count, token_threshold),
+                        }
+                    )
+            except Exception:
+                pass
     return large_files
 
 
 def find_large_classes(file_path, token_threshold=300, top_n=None):
     """
-    Find classes in a Python file whose token count exceeds the threshold.
+    Find classes in a Python or JS/JSX file whose token count exceeds the threshold.
     Returns a list of dicts with class name, file, start/end line, and token count, including threshold and top_n for reporting.
     """
     import ast
+    from replicheck.parser import CodeParser
+    import re
 
     large_classes = []
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        tree = ast.parse(content)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef):
-                # Get all tokens in the class node
-                class_tokens = []
-                for child in ast.walk(node):
-                    if isinstance(child, ast.Name):
-                        class_tokens.append(child.id)
-                    elif isinstance(child, ast.Constant):
-                        class_tokens.append(str(child.value))
-                if len(class_tokens) >= token_threshold:
-                    large_classes.append(
-                        {
-                            "name": node.name,
-                            "file": str(file_path),
-                            "start_line": node.lineno,
-                            "end_line": getattr(node, "end_lineno", None),
-                            "token_count": len(class_tokens),
-                            "threshold": token_threshold,
-                            "top_n": top_n,
-                            "severity": compute_severity(
-                                len(class_tokens), token_threshold
-                            ),
-                        }
-                    )
-    except Exception:
-        pass
+    suffix = str(file_path).lower()
+    if suffix.endswith(".py"):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            tree = ast.parse(content)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef):
+                    # Get all tokens in the class node
+                    class_tokens = []
+                    for child in ast.walk(node):
+                        if isinstance(child, ast.Name):
+                            class_tokens.append(child.id)
+                        elif isinstance(child, ast.Constant):
+                            class_tokens.append(str(child.value))
+                    if len(class_tokens) >= token_threshold:
+                        large_classes.append(
+                            {
+                                "name": node.name,
+                                "file": str(file_path),
+                                "start_line": node.lineno,
+                                "end_line": getattr(node, "end_lineno", None),
+                                "token_count": len(class_tokens),
+                                "threshold": token_threshold,
+                                "top_n": top_n,
+                                "severity": compute_severity(
+                                    len(class_tokens), token_threshold
+                                ),
+                            }
+                        )
+        except Exception:
+            pass
+    elif suffix.endswith(".js") or suffix.endswith(".jsx"):
+        try:
+            parser = CodeParser()
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            from replicheck.tree_sitter_loader import JAVASCRIPT
+
+            blocks = parser._parse_with_tree_sitter(content, file_path, JAVASCRIPT)
+            for block in blocks:
+                tokens = block["tokens"]
+                if tokens:
+                    class_name = tokens[0]
+                    token_count = len(tokens)
+                    if token_count >= token_threshold:
+                        large_classes.append(
+                            {
+                                "name": class_name,
+                                "file": str(file_path),
+                                "start_line": block["location"]["start_line"],
+                                "end_line": block["location"].get("end_line"),
+                                "token_count": token_count,
+                                "threshold": token_threshold,
+                                "top_n": top_n,
+                                "severity": compute_severity(
+                                    token_count, token_threshold
+                                ),
+                            }
+                        )
+        except Exception:
+            pass
     return large_classes
 
 
