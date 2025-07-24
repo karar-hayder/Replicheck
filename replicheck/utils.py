@@ -184,6 +184,66 @@ def analyze_js_cyclomatic_complexity(file_path: Path, threshold: int = 10):
     return results
 
 
+def analyze_cs_cyclomatic_complexity(file_path: Path, threshold: int = 10):
+    """
+    Analyze cyclomatic complexity of a C# file using the compiled ComplexityAnalyzer.exe.
+
+    Args:
+        file_path: Path to the C# (.cs) file
+        threshold: Complexity threshold to flag
+
+    Returns:
+        List of dicts with function/method name, complexity, and location if above threshold
+    """
+    import subprocess
+    import json
+    from pathlib import Path
+
+    results = []
+    # Path to the compiled C# analyzer executable
+    exe_path = (
+        Path(__file__).parent.parent
+        / "utils"
+        / "C#"
+        / "ComplexityAnalyzer"
+        / "bin"
+        / "Release"
+        / "net9.0"
+        / "win-x64"
+        / "ComplexityAnalyzer.exe"
+    )
+
+    try:
+        proc = subprocess.run(
+            [str(exe_path), str(file_path)],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if proc.returncode != 0:
+            return []
+
+        functions = json.loads(proc.stdout)
+        for fn in functions:
+            if fn.get("Complexity", 0) >= threshold:
+                results.append(
+                    {
+                        "name": fn.get("Name", "<anonymous>"),
+                        "complexity": fn.get("Complexity"),
+                        "lineno": fn.get("LineNo"),
+                        "endline": fn.get("EndLine"),
+                        "file": str(file_path),
+                        "threshold": threshold,
+                        "severity": compute_severity(
+                            fn.get("Complexity", 0), threshold
+                        ),
+                    }
+                )
+    except Exception:
+        pass
+    return results
+
+
 def find_large_files(files, token_threshold=500, top_n=None):
     """
     Find files whose total token count exceeds the threshold.
@@ -191,6 +251,10 @@ def find_large_files(files, token_threshold=500, top_n=None):
     """
     import tokenize
     import re
+    from replicheck.parser import CodeParser
+
+    large_files = []
+    parser = CodeParser()
 
     def js_tokenize(code):
         # Simple JS tokenizer: split on word boundaries and symbols
@@ -239,6 +303,31 @@ def find_large_files(files, token_threshold=500, top_n=None):
                     )
             except Exception:
                 pass
+        elif suffix.endswith(".cs"):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                # print(content)
+
+                blocks = parser._parse_with_tree_sitter(content, file_path, "csharp")
+                token_count = sum(len(block["tokens"]) for block in blocks)
+                if token_count < token_threshold // 2:
+                    import re
+
+                    raw_tokens = re.findall(r"\w+|[^\s\w]", content, re.UNICODE)
+                    token_count = len(raw_tokens)
+                if token_count >= token_threshold:
+                    large_files.append(
+                        {
+                            "file": str(file_path),
+                            "token_count": token_count,
+                            "threshold": token_threshold,
+                            "top_n": top_n,
+                            "severity": compute_severity(token_count, token_threshold),
+                        }
+                    )
+            except Exception:
+                pass
     return large_files
 
 
@@ -249,11 +338,11 @@ def find_large_classes(file_path, token_threshold=300, top_n=None):
     """
     import ast
     from replicheck.parser import CodeParser
-    import re
 
     large_classes = []
-    suffix = str(file_path).lower()
-    if suffix.endswith(".py"):
+    suffix = str(file_path).split(".")[-1].lower()
+    parser = CodeParser()
+    if suffix == "py":
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
@@ -284,18 +373,43 @@ def find_large_classes(file_path, token_threshold=300, top_n=None):
                         )
         except Exception:
             pass
-    elif suffix.endswith(".js") or suffix.endswith(".jsx"):
+    elif suffix == "js" or suffix == "jsx":
         try:
-            parser = CodeParser()
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
-            from replicheck.tree_sitter_loader import JAVASCRIPT
-
-            blocks = parser._parse_with_tree_sitter(content, file_path, JAVASCRIPT)
+            blocks = parser._parse_with_tree_sitter(content, file_path, "javascript")
             for block in blocks:
                 tokens = block["tokens"]
                 if tokens:
                     class_name = tokens[0]
+                    token_count = len(tokens)
+                    if token_count >= token_threshold:
+                        large_classes.append(
+                            {
+                                "name": class_name,
+                                "file": str(file_path),
+                                "start_line": block["location"]["start_line"],
+                                "end_line": block["location"].get("end_line"),
+                                "token_count": token_count,
+                                "threshold": token_threshold,
+                                "top_n": top_n,
+                                "severity": compute_severity(
+                                    token_count, token_threshold
+                                ),
+                            }
+                        )
+        except Exception:
+            pass
+    elif suffix == "cs":
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            blocks = parser._parse_with_tree_sitter(content, file_path, "csharp")
+
+            for block in blocks:
+                tokens = block["tokens"]
+                if tokens:
+                    class_name = tokens[0] if tokens else "unknown"
                     token_count = len(tokens)
                     if token_count >= token_threshold:
                         large_classes.append(

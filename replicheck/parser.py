@@ -8,21 +8,21 @@ from typing import Any, Dict, List
 
 from tree_sitter import Parser
 
-from .tree_sitter_loader import JAVASCRIPT, PYTHON
+from .tree_sitter_loader import JAVASCRIPT, PYTHON, get_parser, CSHARP, get_language
 
 # from tree_sitter_languages import get_parser
 
 
 class CodeParser:
     def __init__(self):
-        self.supported_extensions = {".py", ".js", ".jsx"}
+        self.supported_extensions = {".py", ".js", ".jsx", ".cs"}
         self._parsers = {}
 
-    def _get_parser(self, language):
-        if language not in self._parsers:
-            parser = Parser(language)
-            self._parsers[language] = parser
-        return self._parsers[language]
+    def _get_parser(self, language_name):
+        if language_name not in self._parsers:
+            parser = get_parser(language_name)
+            self._parsers[language_name] = parser
+        return self._parsers[language_name]
 
     def parse_file(self, file_path: Path) -> List[Dict[str, Any]]:
         if file_path.suffix not in self.supported_extensions:
@@ -33,8 +33,9 @@ class CodeParser:
         if file_path.suffix == ".py":
             return self._parse_python(content, file_path)
         elif file_path.suffix in {".js", ".jsx"}:
-            return self._parse_with_tree_sitter(content, file_path, JAVASCRIPT)
-        # .ts and .tsx are not supported
+            return self._parse_with_tree_sitter(content, file_path, "javascript")
+        elif file_path.suffix == ".cs":
+            return self._parse_with_tree_sitter(content, file_path, "csharp")
         return []
 
     def _parse_python(self, content: str, file_path: Path) -> List[Dict[str, Any]]:
@@ -59,41 +60,85 @@ class CodeParser:
             return []
 
     def _parse_with_tree_sitter(
-        self, content: str, file_path: Path, language
+        self, content: str, file_path: Path, language_name: str
     ) -> List[Dict[str, Any]]:
-        parser = self._get_parser(language)
+        parser = self._get_parser(language_name)
+        language = get_language(language_name)
+
         try:
             tree = parser.parse(bytes(content, "utf8"))
             root = tree.root_node
+
+            # print(
+            #     f"[DEBUG] Root children types: {set(child.type for child in root.children)}"
+            # )
+
             blocks = []
-            node_types = [
-                "function_declaration",
-                "method_definition",
-                "class_declaration",
-            ]
-            for node_type in node_types:
-                try:
-                    query = language.query(f"({node_type}) @function")
-                    captures = query.captures(tree.root_node)
-                    if isinstance(captures, dict) and "function" in captures:
-                        for capture_node in captures["function"]:
-                            tokens = self._tokenize_tree_sitter_node(
-                                capture_node, content
-                            )
-                            if tokens:
-                                block = {
+
+            # Language-specific query strings
+            language_queries = {
+                "javascript": """
+                    (function_declaration) @function
+                    (method_definition) @function
+                    (class_declaration) @class
+                """,
+                "csharp": """
+                    (class_declaration) @class
+                    (method_declaration) @function
+                    (constructor_declaration) @function
+                    (enum_declaration) @enum
+                """,
+            }
+
+            query_str = language_queries.get(language_name)
+            if not query_str:
+                print(f"[WARN] Unsupported language for tree-sitter: {language_name}")
+                return []
+
+            query = language.query(query_str)
+            captures = query.captures(root)
+            if isinstance(captures, dict):
+                # dict: {capture_name: [nodes]}
+                for capture_name, nodes in captures.items():
+                    for node in nodes:
+                        tokens = self._tokenize_tree_sitter_node(node, content)
+                        if tokens:
+                            blocks.append(
+                                {
                                     "location": {
                                         "file": str(file_path),
-                                        "start_line": capture_node.start_point[0] + 1,
-                                        "end_line": capture_node.end_point[0] + 1,
+                                        "start_line": node.start_point[0] + 1,
+                                        "end_line": node.end_point[0] + 1,
                                     },
                                     "tokens": tokens,
+                                    "type": capture_name,
                                 }
-                                blocks.append(block)
-                except Exception:
-                    pass
+                            )
+            elif isinstance(captures, list):
+                # list of tuples: [(node, capture_name), ...]
+                for node, capture_name in captures:
+                    tokens = self._tokenize_tree_sitter_node(node, content)
+                    if tokens:
+                        blocks.append(
+                            {
+                                "location": {
+                                    "file": str(file_path),
+                                    "start_line": node.start_point[0] + 1,
+                                    "end_line": node.end_point[0] + 1,
+                                },
+                                "tokens": tokens,
+                                "type": capture_name,
+                            }
+                        )
+            else:
+                # Unexpected format
+                print(f"Unexpected captures format: {type(captures)}")
+                return []
+
             return blocks
-        except Exception:
+
+        except Exception as e:
+            print(f"[ERROR] Tree-sitter parse error in {file_path}: {e}")
             return []
 
     def _tokenize_tree_sitter_node(self, node, content: str) -> List[str]:

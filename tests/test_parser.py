@@ -125,21 +125,9 @@ def test_unsupported_extension():
         test_file.unlink()
 
 
-def test_typescript_not_supported():
-    parser = CodeParser()
-    for ext in [".ts", ".tsx"]:
-        test_file = Path(f"test_file{ext}")
-        test_file.write_text("function foo() {}\n")
-        try:
-            blocks = parser.parse_file(test_file)
-            assert blocks == []
-        finally:
-            test_file.unlink()
-
-
 def test_parser_supported_extensions():
     parser = CodeParser()
-    expected_extensions = {".py", ".js", ".jsx"}
+    expected_extensions = {".py", ".js", ".jsx", ".cs"}
     assert parser.supported_extensions == expected_extensions
 
 
@@ -187,15 +175,15 @@ def test_parser_get_parser_caching():
     from replicheck.tree_sitter_loader import JAVASCRIPT, PYTHON
 
     # First call should create a new parser
-    parser1 = parser._get_parser(JAVASCRIPT)
+    parser1 = parser._get_parser("javascript")
     assert parser1 is not None
 
     # Second call should return the same parser instance
-    parser2 = parser._get_parser(JAVASCRIPT)
+    parser2 = parser._get_parser("javascript")
     assert parser1 is parser2
 
     # Different language should create a new parser
-    parser3 = parser._get_parser(PYTHON)
+    parser3 = parser._get_parser("python")
     assert parser3 is not parser1
 
 

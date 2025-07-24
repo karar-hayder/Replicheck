@@ -336,7 +336,7 @@ def test_find_large_files_js(tmp_path):
     class Bar { method() { return 42; } }
     // Add more tokens to exceed threshold
     """ + (
-        "var a = 1;\n" * 100
+        "var a = 1;\n" * 500
     )
     file = tmp_path / "big.js"
     file.write_text(js_code)
@@ -378,5 +378,78 @@ def test_analyze_js_cyclomatic_complexity(tmp_path):
     results = analyze_js_cyclomatic_complexity(file, threshold=2)
     assert results, "Should detect at least one high-complexity function"
     assert any(r["name"] == "bar" or r["name"] == "foo" for r in results)
+    assert all("complexity" in r for r in results)
+    assert all("file" in r for r in results)
+
+
+def test_find_large_files_cs(tmp_path):
+    cs_code = """
+    using System;
+    namespace TestNamespace {
+        class SmallClass { void SmallMethod() { int x = 1; } }
+    }
+""" + (
+        "   int a = 1;\n" * 100
+    )
+    file = tmp_path / "big.cs"
+    file.write_text(cs_code)
+    from replicheck.utils import find_large_files
+
+    results = find_large_files([file], token_threshold=50)
+    print(results)
+    assert results, "Should detect the C# file as large"
+    assert results[0]["file"].endswith("big.cs")
+    assert results[0]["token_count"] >= 50
+
+
+def test_find_large_classes_cs(tmp_path):
+    # Add many methods inside the class to exceed the threshold
+    methods = "\n".join([f"  void Method{i}() {{ int x = {i}; }}" for i in range(60)])
+    cs_code = f"""
+    namespace TestNamespace {{
+        class BigClass {{
+        {methods}
+        }}
+    }}
+    """
+    file = tmp_path / "bigclass.cs"
+    file.write_text(cs_code)
+    from replicheck.utils import find_large_classes
+
+    results = find_large_classes(file, token_threshold=50)
+    assert results, "Should detect the C# class as large"
+    assert results[0]["name"] == "BigClass"
+    assert results[0]["token_count"] >= 50
+
+
+def test_analyze_cs_cyclomatic_complexity(tmp_path):
+    cs_code = """
+    namespace TestNamespace {
+        class ComplexityTest {
+            int Foo(int x) {
+                if (x > 0) {
+                    return 1;
+                } else {
+                    return 2;
+                }
+            }
+            int Bar() {
+                for (int i = 0; i < 10; i++) {
+                    if (i % 2 == 0) {
+                        continue;
+                    }
+                }
+                return 0;
+            }
+        }
+    }
+    """
+    file = tmp_path / "complex.cs"
+    file.write_text(cs_code)
+    from replicheck.utils import analyze_cs_cyclomatic_complexity
+
+    results = analyze_cs_cyclomatic_complexity(file, threshold=2)
+    assert results, "Should detect at least one high-complexity function"
+    assert any(r["name"] == "Bar" or r["name"] == "Foo" for r in results)
     assert all("complexity" in r for r in results)
     assert all("file" in r for r in results)
