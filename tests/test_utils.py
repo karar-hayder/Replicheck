@@ -2,7 +2,6 @@
 Tests for the utils module.
 """
 
-import tempfile
 from pathlib import Path
 
 from replicheck.utils import calculate_similarity, find_files, get_file_hash
@@ -380,6 +379,118 @@ def test_analyze_js_cyclomatic_complexity(tmp_path):
     assert any(r["name"] == "bar" or r["name"] == "foo" for r in results)
     assert all("complexity" in r for r in results)
     assert all("file" in r for r in results)
+
+
+def test_find_large_files_ts(tmp_path):
+    ts_code = """
+    function foo(): number { let x = 1; let y = 2; return x + y; }
+    class Bar { method(): number { return 42; } }
+    """ + (
+        "let a: number = 1;\n" * 500
+    )
+
+    file = tmp_path / "big.ts"
+    file.write_text(ts_code)
+    from replicheck.utils import find_large_files
+
+    results = find_large_files([file], token_threshold=50)
+    assert results, "Should detect the TS file as large"
+    assert results[0]["file"].endswith("big.ts")
+    assert results[0]["token_count"] >= 50
+
+
+def test_find_large_classes_ts(tmp_path):
+    methods = "\n".join([f"  method{i}(): void {{ let x = {i}; }}" for i in range(60)])
+    ts_code = f"""
+    class BigClass {{
+    {methods}
+    }}
+    """
+    file = tmp_path / "bigclass.ts"
+    file.write_text(ts_code)
+    from replicheck.utils import find_large_classes
+
+    results = find_large_classes(file, token_threshold=50)
+    assert results, "Should detect the TS class as large"
+    assert results[0]["name"] == "BigClass"
+    assert results[0]["token_count"] >= 50
+
+
+def test_analyze_ts_cyclomatic_complexity(tmp_path):
+    ts_code = """
+    function foo(x: number): number { if (x > 0) { return 1; } else { return 2; } }
+    function bar(): void { for (let i=0; i<10; i++) { if (i % 2 === 0) { continue; } } }
+    """
+    file = tmp_path / "complex.ts"
+    file.write_text(ts_code)
+    from replicheck.utils import analyze_js_cyclomatic_complexity
+
+    results = analyze_js_cyclomatic_complexity(file, threshold=2)
+    assert results, "Should detect at least one high-complexity TS function"
+    assert any(r["name"] in {"foo", "bar"} for r in results)
+    assert all("complexity" in r for r in results)
+
+
+def test_find_large_files_tsx(tmp_path):
+    tsx_code = """
+    import React from 'react';
+    const Component = ({ name }: { name: string }) => <div>Hello {name}</div>;
+    """ + (
+        "const x = <span>text</span>;\n" * 500
+    )
+
+    file = tmp_path / "big.tsx"
+    file.write_text(tsx_code)
+    from replicheck.utils import find_large_files
+
+    results = find_large_files([file], token_threshold=50)
+    assert results, "Should detect the TSX file as large"
+    assert results[0]["file"].endswith("big.tsx")
+    assert results[0]["token_count"] >= 50
+
+
+def test_find_large_classes_tsx(tmp_path):
+    methods = "\n".join(
+        [f"  method{i}(): void {{ console.log({i}); }}" for i in range(60)]
+    )
+    tsx_code = f"""
+    import React from 'react';
+
+    class BigComponent extends React.Component {{
+    {methods}
+    render() {{
+        return <div>Big Component</div>;
+    }}
+    }}
+    """
+    file = tmp_path / "bigcomponent.tsx"
+    file.write_text(tsx_code)
+    from replicheck.utils import find_large_classes
+
+    results = find_large_classes(file, token_threshold=50)
+    assert results, "Should detect the TSX class as large"
+    assert results[0]["name"] == "BigComponent"
+    assert results[0]["token_count"] >= 50
+
+
+def test_analyze_tsx_cyclomatic_complexity(tmp_path):
+    tsx_code = """
+    import React from 'react';
+    function DecisionComponent({ flag }: { flag: boolean }) {
+        if (flag) {
+            return <span>Yes</span>;
+        } else {
+            return <span>No</span>;
+        }
+    }
+    """
+    file = tmp_path / "complex.tsx"
+    file.write_text(tsx_code)
+    from replicheck.utils import analyze_js_cyclomatic_complexity
+
+    results = analyze_js_cyclomatic_complexity(file, threshold=1)
+    assert results, "Should detect complexity in TSX component"
+    assert any(r["name"] == "DecisionComponent" for r in results)
 
 
 def test_find_large_files_cs(tmp_path):

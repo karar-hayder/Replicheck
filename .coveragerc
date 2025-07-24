@@ -1,0 +1,36 @@
+[run]
+# Measure branch coverage
+branch = True
+
+# Omit init files and common test or config files that usually don't affect coverage
+omit =
+    */__init__.py
+    setup.py
+    main.py
+    cli.py
+    tests/*
+
+[report]
+fail_under = 90
+
+show_missing = True
+
+# Lines to exclude from coverage measurement (e.g., debugging, repr methods)
+exclude_lines =
+    pragma: no cover
+    if __name__ == "__main__":
+
+    def __repr__
+    def __str__
+    def __eq__
+    def __ne__
+    def __hash__
+    # You can add more patterns as needed
+
+[html]
+# Output directory for HTML coverage reports
+directory = htmlcov
+
+[xml]
+# Output filename for XML coverage report
+output = coverage.xml

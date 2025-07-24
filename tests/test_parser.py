@@ -12,7 +12,6 @@ from replicheck.parser import CodeParser
 def test_parse_python():
     parser = CodeParser()
 
-    # Create a temporary Python file for testing
     test_file = Path("test_file.py")
     test_content = """
 def test_function(x, y):
@@ -28,20 +27,19 @@ class TestClass:
     try:
         blocks = parser.parse_file(test_file)
 
-        assert len(blocks) == 3  # One function and two methods
+        assert len(blocks) == 3
         assert blocks[0]["location"]["file"] == str(test_file)
         assert blocks[0]["location"]["start_line"] == 2
         assert "test_function" in blocks[0]["tokens"]
         assert "TestClass" in blocks[1]["tokens"]
 
     finally:
-        test_file.unlink()  # Clean up
+        test_file.unlink()
 
 
 def test_parse_javascript():
     parser = CodeParser()
 
-    # Create a temporary JavaScript file for testing
     test_file = Path("test_file.js")
     test_content = """
 function testFunction(x, y) {
@@ -63,10 +61,8 @@ class TestClass {
 
     try:
         blocks = parser.parse_file(test_file)
-        print(f"JavaScript parsing result: {blocks}")  # Debug output
 
-        # Should find function and class with methods
-        assert len(blocks) >= 1  # At least one block should be found
+        assert len(blocks) >= 1
         assert blocks[0]["location"]["file"] == str(test_file)
         assert (
             "testFunction" in blocks[0]["tokens"] or "TestClass" in blocks[0]["tokens"]
@@ -76,39 +72,99 @@ class TestClass {
         test_file.unlink()
 
 
-def test_parse_jsx():
+def test_parse_typescript():
     parser = CodeParser()
 
-    # Create a temporary JSX file for testing
-    test_file = Path("test_file.jsx")
+    test_file = Path("test_file.ts")
     test_content = """
-import React from 'react';
-
-function TestComponent({ name, value }) {
-    return (
-        <div>
-            <h1>{name}</h1>
-            <p>{value}</p>
-        </div>
-    );
+function greet(name: string): string {
+    return `Hello, ${name}`;
 }
 
-class ClassComponent extends React.Component {
-    render() {
-        return <div>Hello World</div>;
+class Greeter {
+    private greeting: string;
+
+    constructor(message: string) {
+        this.greeting = message;
+    }
+
+    greet() {
+        return "Hello, " + this.greeting;
     }
 }
 """
-
     test_file.write_text(test_content)
 
     try:
         blocks = parser.parse_file(test_file)
+        assert len(blocks) >= 2
+        names = [t[0] for t in [b["tokens"] for b in blocks] if t]
+        assert "greet" in names or "Greeter" in names
+        assert all(b["location"]["file"] == str(test_file) for b in blocks)
+    finally:
+        test_file.unlink()
 
-        # Should find function and class components
-        assert len(blocks) >= 1  # At least one block should be found
-        assert blocks[0]["location"]["file"] == str(test_file)
 
+def test_parse_tsx():
+    parser = CodeParser()
+
+    test_file = Path("test_file.tsx")
+    test_content = """
+import React from "react";
+
+type Props = {
+  name: string;
+};
+
+export default function HelloWorld({ name }: Props) {
+  return <div>Hello, {name}</div>;
+}
+
+class App extends React.Component {
+  render() {
+    return <HelloWorld name="TSX" />;
+  }
+}
+"""
+    test_file.write_text(test_content)
+
+    try:
+        blocks = parser.parse_file(test_file)
+        assert len(blocks) >= 2
+        names = [t[0] for t in [b["tokens"] for b in blocks] if t]
+        assert "HelloWorld" in names or "App" in names
+    finally:
+        test_file.unlink()
+
+
+def test_parse_csharp():
+    parser = CodeParser()
+
+    test_file = Path("test_file.cs")
+    test_content = """
+using System;
+
+namespace HelloWorldApp {
+    class Greeter {
+        private string message;
+
+        public Greeter(string message) {
+            this.message = message;
+        }
+
+        public void SayHello() {
+            Console.WriteLine("Hello " + message);
+        }
+    }
+}
+"""
+    test_file.write_text(test_content)
+
+    try:
+        blocks = parser.parse_file(test_file)
+        assert len(blocks) >= 2
+        tokens_flat = [tok for b in blocks for tok in b["tokens"]]
+        assert "Greeter" in tokens_flat or "SayHello" in tokens_flat
     finally:
         test_file.unlink()
 
@@ -127,14 +183,12 @@ def test_unsupported_extension():
 
 def test_parser_supported_extensions():
     parser = CodeParser()
-    expected_extensions = {".py", ".js", ".jsx", ".cs"}
+    expected_extensions = {".py", ".js", ".jsx", ".cs", ".ts", ".tsx"}
     assert parser.supported_extensions == expected_extensions
 
 
 def test_parser_handles_syntax_errors():
     parser = CodeParser()
-
-    # Test Python syntax error
     test_file = Path("test_syntax_error.py")
     test_content = """
 def test_function(
@@ -145,12 +199,10 @@ def test_function(
 
     try:
         blocks = parser.parse_file(test_file)
-        # Should handle syntax errors gracefully
         assert isinstance(blocks, list)
     finally:
         test_file.unlink()
 
-    # Test JavaScript syntax error
     test_file = Path("test_syntax_error.js")
     test_content = """
 function testFunction( {  # Missing closing parenthesis
@@ -161,7 +213,30 @@ function testFunction( {  # Missing closing parenthesis
 
     try:
         blocks = parser.parse_file(test_file)
-        # Should handle syntax errors gracefully
+        assert isinstance(blocks, list)
+    finally:
+        test_file.unlink()
+
+    test_file = Path("test_syntax_error.ts")
+    test_file.write_text("function greet(: string) { return 1; }")  # Invalid TS
+    try:
+        blocks = parser.parse_file(test_file)
+        assert isinstance(blocks, list)
+    finally:
+        test_file.unlink()
+
+    test_file = Path("test_syntax_error.tsx")
+    test_file.write_text("<div><Component></div>")  # Mismatched JSX
+    try:
+        blocks = parser.parse_file(test_file)
+        assert isinstance(blocks, list)
+    finally:
+        test_file.unlink()
+
+    test_file = Path("test_syntax_error.cs")
+    test_file.write_text("public class MyClass { void Method( )")  # Missing brace
+    try:
+        blocks = parser.parse_file(test_file)
         assert isinstance(blocks, list)
     finally:
         test_file.unlink()
@@ -171,18 +246,12 @@ def test_parser_get_parser_caching():
     """Test that parser caching works correctly."""
     parser = CodeParser()
 
-    # Import the language objects
-    from replicheck.tree_sitter_loader import JAVASCRIPT, PYTHON
-
-    # First call should create a new parser
     parser1 = parser._get_parser("javascript")
     assert parser1 is not None
 
-    # Second call should return the same parser instance
     parser2 = parser._get_parser("javascript")
     assert parser1 is parser2
 
-    # Different language should create a new parser
     parser3 = parser._get_parser("python")
     assert parser3 is not parser1
 
@@ -191,7 +260,6 @@ def test_parser_tree_sitter_exception_handling():
     """Test that tree-sitter parsing handles exceptions gracefully."""
     parser = CodeParser()
 
-    # Create a file that will cause tree-sitter to fail
     test_file = Path("test_tree_sitter_error.js")
     test_content = "invalid javascript code that will cause parsing errors"
 
@@ -199,7 +267,6 @@ def test_parser_tree_sitter_exception_handling():
 
     try:
         blocks = parser.parse_file(test_file)
-        # Should return empty list on parsing errors
         assert isinstance(blocks, list)
     finally:
         test_file.unlink()
@@ -209,7 +276,6 @@ def test_parser_query_exception_handling():
     """Test that query exceptions are handled gracefully."""
     parser = CodeParser()
 
-    # Create a valid JS file
     test_file = Path("test_query_error.js")
     test_content = """
 function test() {
@@ -221,7 +287,6 @@ function test() {
 
     try:
         blocks = parser.parse_file(test_file)
-        # Should handle query errors gracefully
         assert isinstance(blocks, list)
     finally:
         test_file.unlink()
@@ -244,7 +309,6 @@ function test() {
 
     try:
         blocks = parser.parse_file(test_file)
-        # Should extract string and number tokens
         assert isinstance(blocks, list)
     finally:
         test_file.unlink()
@@ -255,13 +319,75 @@ def test_parser_tokenize_tree_sitter_node_empty_content():
     parser = CodeParser()
 
     test_file = Path("test_empty.js")
-    test_content = "   \n   \n"  # Only whitespace
+    test_content = "   \n   \n"
 
     test_file.write_text(test_content)
 
     try:
         blocks = parser.parse_file(test_file)
-        # Should handle empty content gracefully
         assert isinstance(blocks, list)
+    finally:
+        test_file.unlink()
+
+
+def test_parser_tokenize_tree_sitter_node_with_strings_ts():
+    parser = CodeParser()
+
+    test_file = Path("test_strings.ts")
+    test_content = """
+function greet(name: string): string {
+    const message = "Hello, " + name;
+    return message;
+}
+"""
+    test_file.write_text(test_content)
+
+    try:
+        blocks = parser.parse_file(test_file)
+        assert isinstance(blocks, list)
+        assert any("message" in block["tokens"] for block in blocks)
+    finally:
+        test_file.unlink()
+
+
+def test_parser_tokenize_tree_sitter_node_with_strings_tsx():
+    parser = CodeParser()
+
+    test_file = Path("test_strings.tsx")
+    test_content = """
+import React from 'react';
+
+function Greet({ name }: { name: string }) {
+    return <div>Hello, {name}</div>;
+}
+"""
+    test_file.write_text(test_content)
+
+    try:
+        blocks = parser.parse_file(test_file)
+        assert isinstance(blocks, list)
+        assert any("Greet" in block["tokens"] for block in blocks)
+    finally:
+        test_file.unlink()
+
+
+def test_parser_tokenize_tree_sitter_node_with_strings_cs():
+    parser = CodeParser()
+
+    test_file = Path("test_strings.cs")
+    test_content = """
+public class Greeter {
+    public string Greet(string name) {
+        string message = "Hello, " + name;
+        return message;
+    }
+}
+"""
+    test_file.write_text(test_content)
+
+    try:
+        blocks = parser.parse_file(test_file)
+        assert isinstance(blocks, list)
+        assert any("Greet" in block["tokens"] for block in blocks)
     finally:
         test_file.unlink()

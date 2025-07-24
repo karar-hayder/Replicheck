@@ -131,7 +131,6 @@ def analyze_cyclomatic_complexity(file_path: Path, threshold: int = 10):
                     }
                 )
     except Exception as e:
-        # Optionally log or print error
         pass
     return results
 
@@ -257,7 +256,6 @@ def find_large_files(files, token_threshold=500, top_n=None):
     parser = CodeParser()
 
     def js_tokenize(code):
-        # Simple JS tokenizer: split on word boundaries and symbols
         return re.findall(r"\w+|[^\s\w]", code, re.UNICODE)
 
     large_files = []
@@ -285,12 +283,17 @@ def find_large_files(files, token_threshold=500, top_n=None):
                     )
             except Exception:
                 pass
-        elif suffix.endswith(".js") or suffix.endswith(".jsx"):
+        elif suffix.endswith((".js", ".jsx", ".ts", ".tsx")):
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     code = f.read()
-                tokens = js_tokenize(code)
-                token_count = len(tokens)
+                if suffix.endswith(".ts") or suffix.endswith(".tsx"):
+                    lang = "tsx" if suffix.endswith(".tsx") else "typescript"
+                    blocks = parser._parse_with_tree_sitter(code, file_path, lang)
+                    token_count = sum(len(block["tokens"]) for block in blocks)
+                else:
+                    tokens = js_tokenize(code)
+                    token_count = len(tokens)
                 if token_count >= token_threshold:
                     large_files.append(
                         {
@@ -303,11 +306,11 @@ def find_large_files(files, token_threshold=500, top_n=None):
                     )
             except Exception:
                 pass
+
         elif suffix.endswith(".cs"):
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
-                # print(content)
 
                 blocks = parser._parse_with_tree_sitter(content, file_path, "csharp")
                 token_count = sum(len(block["tokens"]) for block in blocks)
@@ -373,12 +376,19 @@ def find_large_classes(file_path, token_threshold=300, top_n=None):
                         )
         except Exception:
             pass
-    elif suffix == "js" or suffix == "jsx":
+    elif suffix in {"js", "jsx", "ts", "tsx"}:
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
-            blocks = parser._parse_with_tree_sitter(content, file_path, "javascript")
+            lang = (
+                "tsx"
+                if suffix == "tsx"
+                else "typescript" if suffix == "ts" else "javascript"
+            )
+            blocks = parser._parse_with_tree_sitter(content, file_path, lang)
             for block in blocks:
+                if block["type"] != "class":
+                    continue
                 tokens = block["tokens"]
                 if tokens:
                     class_name = tokens[0]
@@ -400,6 +410,7 @@ def find_large_classes(file_path, token_threshold=300, top_n=None):
                         )
         except Exception:
             pass
+
     elif suffix == "cs":
         try:
             with open(file_path, "r", encoding="utf-8") as f:
@@ -434,27 +445,75 @@ def find_large_classes(file_path, token_threshold=300, top_n=None):
 def find_todo_fixme_comments(files):
     """
     Scan files for TODO and FIXME comments.
-    Returns a list of dicts with file, line number, and comment text.
+    Uses tree-sitter for JS/TS/TSX/JSX/C# and regex for Python.
+    Returns list of dicts: file, line number, comment type, and comment text.
     """
     import re
+    from replicheck.parser import get_language, get_parser
 
     results = []
-    pattern = re.compile(r"#.*?(TODO|FIXME)(:|\b)(.*)", re.IGNORECASE)
+
+    py_pattern = re.compile(r"#.*?(TODO|FIXME)(:|\b)(.*)", re.IGNORECASE)
+
+    # Languages using tree-sitter to extract comments
+    ts_languages = {
+        ".js": "javascript",
+        ".jsx": "javascript",
+        ".ts": "typescript",
+        ".tsx": "typescript",
+        ".cs": "csharp",
+    }
+
     for file_path in files:
-        if str(file_path).endswith(".py"):
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    for lineno, line in enumerate(f, 1):
-                        match = pattern.search(line)
-                        if match:
-                            results.append(
-                                {
-                                    "file": str(file_path),
-                                    "line": lineno,
-                                    "type": match.group(1).upper(),
-                                    "text": match.group(3).strip(),
-                                }
-                            )
-            except Exception:
-                pass
+        ext = file_path.suffix.lower()
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Python handled with regex
+            if ext == ".py":
+                for lineno, line in enumerate(content.splitlines(), 1):
+                    match = py_pattern.search(line)
+                    if match:
+                        results.append(
+                            {
+                                "file": str(file_path),
+                                "line": lineno,
+                                "type": match.group(1).upper(),
+                                "text": match.group(3).strip(),
+                            }
+                        )
+
+            # Use Tree-sitter for typed languages
+            elif ext in ts_languages:
+                language_name = ts_languages[ext]
+                parser = get_parser(language_name)
+                language = get_language(language_name)
+                tree = parser.parse(bytes(content, "utf-8"))
+                root = tree.root_node
+
+                query = language.query(
+                    """
+                    (comment) @comment
+                """
+                )
+                captures = query.captures(root)
+                for node, _ in captures:
+                    comment_text = content[node.start_byte : node.end_byte]
+                    match = re.search(
+                        r"(TODO|FIXME)(:|\b)(.*)", comment_text, re.IGNORECASE
+                    )
+                    if match:
+                        results.append(
+                            {
+                                "file": str(file_path),
+                                "line": node.start_point[0] + 1,
+                                "type": match.group(1).upper(),
+                                "text": match.group(3).strip(),
+                            }
+                        )
+
+        except Exception as e:
+            pass
+
     return results
