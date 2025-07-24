@@ -8,7 +8,7 @@
 
 - **Duplicate Detection:** Finds duplicate code blocks within user-specified directories.
 - **Configurable Thresholds:** Allows users to set the minimum similarity threshold and minimum code block size for comparison.
-- **Language Support:** Supports Python and JavaScript/JSX code natively.
+- **Language Support:** Supports Python, JavaScript/JSX, and C# code natively.
 - **Directory and File Filtering:** Ignores virtual environments and user-specified directories. Users can also specify which file extensions to analyze.
 - **Reporting:** Generates detailed reports in either text or JSON format, with the option to output to a file or the console.
 - **Robust Testing:** The project boasts 98%+ test coverage and robust error handling.
@@ -19,10 +19,11 @@
 - **CLI Entrypoint:** `cli.py` provides a command-line interface for users to run Replicheck with various options.
 - **Core Modules:**
   - `replicheck/config.py`: Handles configuration and validation.
-  - `replicheck/parser.py`: Parses code files and extracts code blocks (Python and JavaScript/JSX fully supported).
+  - `replicheck/parser.py`: Parses code files and extracts code blocks (Python, JavaScript/JSX, and C# fully supported).
   - `replicheck/detector.py`: Contains the logic for detecting duplicate code blocks using a Jaccard similarity metric.
   - `replicheck/reporter.py`: Handles report generation in text and JSON formats.
   - `replicheck/utils.py`: Provides utility functions for file discovery and similarity calculation.
+  - `replicheck/tree_sitter_loader.py`: Loads and initializes Tree-sitter grammars (JavaScript, JSX, C#).
 - **Testing:** Comprehensive tests for all modules are located in the `tests/` directory.
 
 ## Usage
@@ -45,7 +46,7 @@ Key options:
 
 ## What Has Been Implemented
 
-- **Python Code Parsing:** Uses the AST module to extract functions and classes as code blocks, tokenizing their contents for comparison.
+- **Code Parsing:** Uses the AST module for Python and Tree-sitter for JavaScript/JSX and C# to extract functions and classes for comparison and analysis.
 - **Duplicate Detection:** Compares code blocks using Jaccard similarity, with configurable thresholds.
 - **Reporting:** Outputs results in both human-readable and machine-readable formats.
 - **Comprehensive Testing:** All core modules have dedicated tests, including edge cases and error handling.
@@ -56,12 +57,12 @@ Key options:
 
 ### 1. **JavaScript/JSX Parsing**
 
-- **Current State:** JavaScript and JSX parsing is implemented using tree-sitter and typhonjs-escomplex for metrics.
-- **Improvement:** Add support for TypeScript/TSX and more advanced metrics as needed.
+- **Current State:** JavaScript and JSX parsing is implemented using Tree-sitter and `typhonjs-escomplex` for metrics.
+- **Improvement:** Add support for TypeScript/TSX and expand metric coverage if needed.
 
 ### 2. **Multi-language Support**
 
-- **Current State:** Only Python is fully supported.
+- **Current State:** Python, JavaScript/JSX, and C# are fully supported.
 - **Improvement:** Add support for other languages (e.g., TypeScript, Java, C++) by implementing or integrating language-specific parsers.
 
 ### 3. **Improved Similarity Metrics**
@@ -106,7 +107,6 @@ Key options:
 
 ## Notable Limitations
 
-- **JavaScript parsing is not yet implemented.**
 - **Similarity metric is basic and may not catch all forms of duplication.**
 - **Performance may degrade on very large codebases due to pairwise comparison.**
 
@@ -115,6 +115,16 @@ Key options:
 - Tests cover configuration, parsing, detection, reporting, and utility functions.
 - Edge cases (empty files, syntax errors, unsupported extensions) are tested.
 - Error handling in report generation and configuration is tested.
+
+## Recent Milestone
+
+### ✅ C# Support Added (PR #3)
+
+- Full support for C# code metrics:
+  - Cyclomatic complexity (via Tree-sitter)
+  - Large file/class detection
+  - Duplicate code blocks
+- C# added to core parsing, reporting, and CLI workflows
 
 ## License
 

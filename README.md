@@ -5,16 +5,17 @@ A Python tool for detecting code duplications and code quality issues in your pr
 ## Features
 
 - Detect duplicate code blocks within specified directories
-- Detect high cyclomatic complexity functions (Python, JavaScript/JSX)
-- Detect large files and large classes by token count (Python, JavaScript/JSX)
+- Detect high cyclomatic complexity functions (Python, JavaScript/JSX, C#)
+- Detect large files and large classes by token count (Python, JavaScript/JSX, C#)
+- Detect duplicate code blocks (Python, JavaScript/JSX, C#)
+- Support for Python, JavaScript, JSX, and C# files
 - Find TODO/FIXME comments across your codebase
 - Configurable similarity threshold and minimum block size
-- Support for Python, JavaScript, and JSX files (TypeScript/TSX planned)
 - Ignores virtual environments and user-specified directories
 - Detailed reporting in text, JSON, or Markdown format
 - Summary section at the top of every report
 - Hyperlinkable file paths in Markdown and supported terminals
-- 98%+ test coverage and robust error handling
+- 95%+ test coverage and robust error handling
 
 ## Installation
 
@@ -130,6 +131,16 @@ npm install typhonjs-escomplex
 ```
 
 This is required for cyclomatic complexity analysis of JS/JSX files.
+
+### C# Support
+
+Replicheck now supports C# files for:
+
+- Duplicate code block detection
+- Large file and class detection
+- Cyclomatic complexity analysis (based on tree-sitter and custom static heuristics)
+
+No external dependencies are required for C# analysis. Just include `.cs` files in your scan directory and Replicheck will handle the rest.
 
 ## Pre-commit Hooks (Recommended)
 
