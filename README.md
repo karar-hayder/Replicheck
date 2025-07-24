@@ -4,7 +4,6 @@ A Python tool for detecting code duplications and code quality issues in your pr
 
 ## Features
 
-- Detect duplicate code blocks within specified directories
 - Detect high cyclomatic complexity functions (Python, JavaScript/JSX, Typescript/TSX, C#)
 - Detect large files and large classes by token count (Python, JavaScript/JSX, Typescript/TSX, C#)
 - Detect duplicate code blocks (Python, JavaScript/JSX, Typescript/TSX, C#)
