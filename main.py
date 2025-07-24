@@ -110,7 +110,7 @@ def parse_args() -> argparse.Namespace:
         "--extensions",
         type=str,
         nargs="+",
-        help="File extensions to include (default: .py .js .jsx)",
+        help="File extensions to include (default: .py, .js, .jsx, .cs, .ts, .tsx)",
     )
     return parser.parse_args()
 
@@ -144,7 +144,6 @@ def main(
     """
 
     try:
-        # Convert path to Path object
         path = Path(path)
         if not path.exists():
             print(f"Error: Path '{path}' does not exist")
@@ -154,9 +153,8 @@ def main(
         detector = DuplicateDetector(min_similarity=min_similarity, min_size=min_size)
         reporter = Reporter(output_format=output_format)
 
-        # Determine extensions
         if extensions is None:
-            extensions_set = {".py", ".js", ".jsx", ".cs"}
+            extensions_set = {".py", ".js", ".jsx", ".cs", ".ts", ".tsx"}
         else:
             extensions_set = set(
                 e if e.startswith(".") else f".{e}" for e in extensions
@@ -179,19 +177,20 @@ def main(
 
         high_complexity = []
         for file in files:
-            if str(file).endswith(".py"):
+            suffix = str(file).split(".")[-1].lower()
+            if suffix == "py":
                 for result in analyze_cyclomatic_complexity(
                     file, threshold=complexity_threshold
                 ):
                     result["threshold"] = complexity_threshold
                     high_complexity.append(result)
-            elif str(file).endswith(".js") or str(file).endswith(".jsx"):
+            elif suffix in ["js", "jsx", "ts", "tsx"]:
                 for result in analyze_js_cyclomatic_complexity(
                     file, threshold=complexity_threshold
                 ):
                     result["threshold"] = complexity_threshold
                     high_complexity.append(result)
-            elif str(file).endswith(".cs"):
+            elif suffix == "cs":
                 for result in analyze_cs_cyclomatic_complexity(
                     file, threshold=complexity_threshold
                 ):
@@ -213,7 +212,7 @@ def main(
         large_files = find_large_files(
             files, token_threshold=large_file_threshold, top_n=top_n_large
         )
-        # Sort and filter top N
+
         large_files = sorted(large_files, key=lambda x: x["token_count"], reverse=True)
         if top_n_large > 0:
             large_files = large_files[:top_n_large]
@@ -224,16 +223,16 @@ def main(
         else:
             print(f"\nNo large files found (threshold: {large_file_threshold} tokens).")
 
-        # Large class detection
         large_classes = []
         for file in files:
-            if str(file).endswith(".py"):
+            suffix = str(file).split(".")[-1].lower()
+            if suffix in ["py", "js", "jsx", "cs", "ts", "tsx"]:
                 large_classes.extend(
                     find_large_classes(
                         file, token_threshold=large_class_threshold, top_n=top_n_large
                     )
                 )
-        # Sort and filter top N
+
         large_classes = sorted(
             large_classes, key=lambda x: x["token_count"], reverse=True
         )
@@ -253,7 +252,6 @@ def main(
         print("Analyzing code blocks...")
         duplicates = detector.find_duplicates(code_blocks)
 
-        # Generate report
         output_path = Path(output_file) if output_file else None
         todo_fixme_comments = find_todo_fixme_comments(files)
         reporter.generate_report(

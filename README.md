@@ -5,17 +5,17 @@ A Python tool for detecting code duplications and code quality issues in your pr
 ## Features
 
 - Detect duplicate code blocks within specified directories
-- Detect high cyclomatic complexity functions (Python, JavaScript/JSX, C#)
-- Detect large files and large classes by token count (Python, JavaScript/JSX, C#)
-- Detect duplicate code blocks (Python, JavaScript/JSX, C#)
-- Support for Python, JavaScript, JSX, and C# files
+- Detect high cyclomatic complexity functions (Python, JavaScript/JSX, Typescript/TSX, C#)
+- Detect large files and large classes by token count (Python, JavaScript/JSX, Typescript/TSX, C#)
+- Detect duplicate code blocks (Python, JavaScript/JSX, Typescript/TSX, C#)
+- Support for Python, JavaScript, JSX, Typescript, TSX and C# files
 - Find TODO/FIXME comments across your codebase
 - Configurable similarity threshold and minimum block size
 - Ignores virtual environments and user-specified directories
 - Detailed reporting in text, JSON, or Markdown format
 - Summary section at the top of every report
 - Hyperlinkable file paths in Markdown and supported terminals
-- 95%+ test coverage and robust error handling
+- 90%+ test coverage and robust error handling
 
 ## Installation
 
@@ -107,14 +107,13 @@ Summary:
 To run tests:
 
 ```bash
-pytest
+pytest --cov --cov-report=html
 ```
 
-To check code style and sort imports:
+To check code style:
 
 ```bash
 black .
-isort .
 ```
 
 ### JavaScript/JSX Support
@@ -158,7 +157,7 @@ You can use [pre-commit](https://pre-commit.com/) to automatically format and li
    pre-commit install
    ```
 
-3. Now, every time you commit, `black` and `isort` will run automatically.
+3. Now, every time you commit, `black` and `pytest` will run automatically.
 
 If you want to run the hooks manually on all files:
 

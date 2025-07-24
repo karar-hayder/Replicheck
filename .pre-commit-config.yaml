@@ -4,18 +4,11 @@ repos:
     hooks:
       - id: black
 
-  # - repo: local
-  #   hooks:
-  #     - id: isort-ignore-failure
-  #       name: isort (ignore failure)
-  #       entry: bash -c 'isort "$@" || true' --
-  #       language: system
-  #       types: [python]
   - repo: local
     hooks:
       - id: pytest-before-commit
         name: pytest (run tests before commit)
-        entry: bash -c 'pip install -r requirements.txt && pytest'
+        entry: bash -c 'pip install -r requirements.txt && pytest --cov --cov-report=html'
         language: python
         types: [python]
         pass_filenames: false

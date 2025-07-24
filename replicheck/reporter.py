@@ -40,7 +40,6 @@ class Reporter:
                 return f"[{file}]({file})"
         elif mode == "terminal":
             # OSC 8 hyperlink (if supported)
-            # https://gist.github.com/robertknight/2c8c2a6b9236dba7b21c
             url = f"file://{file}"
             if line is not None:
                 url += f"#L{line}"
@@ -116,13 +115,11 @@ class Reporter:
         console_output = []
         file_output = []
 
-        # Add header
         console_output.append(
             f"\n{Fore.CYAN}Code Duplication Report{Style.RESET_ALL}\n"
         )
         file_output.append("\nCode Duplication Report\n")
 
-        # Add summary section at the top
         summary_lines = self._generate_summary(
             complexity_results, large_files, large_classes, todo_fixme, duplicates
         )
@@ -137,7 +134,6 @@ class Reporter:
         # Add cyclomatic complexity section
         if complexity_results is not None:
             if complexity_results:
-                # Sort by severity (Critical > High > Medium > Low > None), then by complexity descending
                 complexity_results = sorted(
                     complexity_results,
                     key=lambda x: (
@@ -166,7 +162,6 @@ class Reporter:
         # Add large files section
         if large_files is not None:
             if large_files:
-                # Sort by severity, then by token_count descending
                 large_files = sorted(
                     large_files,
                     key=lambda x: (
@@ -199,7 +194,6 @@ class Reporter:
         # Add large classes section
         if large_classes is not None:
             if large_classes:
-                # Sort by severity, then by token_count descending
                 large_classes = sorted(
                     large_classes,
                     key=lambda x: (

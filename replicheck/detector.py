@@ -45,7 +45,7 @@ class DuplicateDetector:
         groups = []
         for token_key, blocks in duplicates_by_hash.items():
             if len(blocks) < 2:
-                continue  # Only interested in actual duplicates
+                continue
             files = {b["location"]["file"] for b in blocks}
             cross_file = len(files) > 1
             group = {
@@ -54,7 +54,7 @@ class DuplicateDetector:
                 "locations": [b["location"] for b in blocks],
                 "cross_file": cross_file,
                 "tokens": token_key,
-                "similarity": 1.0,  # Exact match
+                "similarity": 1.0,
             }
             groups.append(group)
         return groups

@@ -35,7 +35,6 @@ class Bar:
     file.write_text(code)
     parser = CodeParser()
     blocks = parser.parse_file(file)
-    # Should find the class and the method
     names = {block["tokens"][0] for block in blocks}
     assert "Bar" in names
     assert "method" in names

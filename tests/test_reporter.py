@@ -294,7 +294,6 @@ def test_reporter_generate_summary_edge_cases():
     """Test _generate_summary with various edge cases."""
     reporter = Reporter()
 
-    # Test with all None values
     summary = reporter._generate_summary(None, None, None, None, None)
     assert len(summary) == 5
     assert "0 high complexity functions ✅" in summary[0]
@@ -425,14 +424,12 @@ def test_reporter_generate_report_file_error(tmp_path):
         }
     ]
 
-    # Create a directory instead of a file to cause an error
     output_file = tmp_path / "report.txt"
     output_file.mkdir()
 
     # Should fall back to console output
     reporter.generate_report(duplicates, output_file)
 
-    # Clean up
     output_file.rmdir()
 
 
@@ -570,18 +567,15 @@ def test_reporter_generate_report_exception_handling(tmp_path, capsys):
         }
     ]
 
-    # Create a directory instead of a file to cause an error
     output_file = tmp_path / "report.txt"
     output_file.mkdir()
 
-    # Should fall back to console output
     reporter.generate_report(duplicates, output_file)
     captured = capsys.readouterr()
     assert (
         "Report written to:" in captured.out or "Error writing report:" in captured.out
     )
 
-    # Clean up
     output_file.rmdir()
 
 

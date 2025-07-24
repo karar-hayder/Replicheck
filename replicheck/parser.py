@@ -5,17 +5,13 @@ Code parsing and tokenization logic.
 import ast
 from pathlib import Path
 from typing import Any, Dict, List
-
 from tree_sitter import Parser
-
 from .tree_sitter_loader import JAVASCRIPT, PYTHON, get_parser, CSHARP, get_language
-
-# from tree_sitter_languages import get_parser
 
 
 class CodeParser:
     def __init__(self):
-        self.supported_extensions = {".py", ".js", ".jsx", ".cs"}
+        self.supported_extensions = {".py", ".js", ".jsx", ".cs", ".ts", ".tsx"}
         self._parsers = {}
 
     def _get_parser(self, language_name):
@@ -26,7 +22,6 @@ class CodeParser:
 
     def parse_file(self, file_path: Path) -> List[Dict[str, Any]]:
         if file_path.suffix not in self.supported_extensions:
-            # Gracefully skip unsupported extensions
             return []
         with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
@@ -34,6 +29,10 @@ class CodeParser:
             return self._parse_python(content, file_path)
         elif file_path.suffix in {".js", ".jsx"}:
             return self._parse_with_tree_sitter(content, file_path, "javascript")
+        elif file_path.suffix == ".ts":
+            return self._parse_with_tree_sitter(content, file_path, "typescript")
+        elif file_path.suffix == ".tsx":
+            return self._parse_with_tree_sitter(content, file_path, "tsx")
         elif file_path.suffix == ".cs":
             return self._parse_with_tree_sitter(content, file_path, "csharp")
         return []
@@ -68,28 +67,39 @@ class CodeParser:
         try:
             tree = parser.parse(bytes(content, "utf8"))
             root = tree.root_node
-
-            # print(
-            #     f"[DEBUG] Root children types: {set(child.type for child in root.children)}"
-            # )
-
             blocks = []
-
-            # Language-specific query strings
             language_queries = {
                 "javascript": """
-                    (function_declaration) @function
-                    (method_definition) @function
-                    (class_declaration) @class
-                """,
+                (function_declaration) @function
+                (method_definition) @function
+                (class_declaration) @class
+            """,
+                "typescript": """
+                (function_declaration) @function
+                (method_definition) @function
+                (class_declaration) @class
+                (interface_declaration) @interface
+                (type_alias_declaration) @type
+                (enum_declaration) @enum
+                (variable_declarator) @declaration
+            """,
+                "tsx": """
+                (function_declaration) @function
+                (method_definition) @function
+                (class_declaration) @class
+                (jsx_element) @jsx
+                (interface_declaration) @interface
+                (type_alias_declaration) @type
+                (enum_declaration) @enum
+                (variable_declarator) @declaration
+            """,
                 "csharp": """
-                    (class_declaration) @class
-                    (method_declaration) @function
-                    (constructor_declaration) @function
-                    (enum_declaration) @enum
-                """,
+                (class_declaration) @class
+                (method_declaration) @function
+                (constructor_declaration) @function
+                (enum_declaration) @enum
+            """,
             }
-
             query_str = language_queries.get(language_name)
             if not query_str:
                 print(f"[WARN] Unsupported language for tree-sitter: {language_name}")
@@ -98,7 +108,6 @@ class CodeParser:
             query = language.query(query_str)
             captures = query.captures(root)
             if isinstance(captures, dict):
-                # dict: {capture_name: [nodes]}
                 for capture_name, nodes in captures.items():
                     for node in nodes:
                         tokens = self._tokenize_tree_sitter_node(node, content)
@@ -115,7 +124,6 @@ class CodeParser:
                                 }
                             )
             elif isinstance(captures, list):
-                # list of tuples: [(node, capture_name), ...]
                 for node, capture_name in captures:
                     tokens = self._tokenize_tree_sitter_node(node, content)
                     if tokens:
@@ -131,7 +139,6 @@ class CodeParser:
                             }
                         )
             else:
-                # Unexpected format
                 print(f"Unexpected captures format: {type(captures)}")
                 return []
 
@@ -145,7 +152,13 @@ class CodeParser:
         tokens = []
 
         def extract_tokens(n):
-            if n.type in ["identifier", "property_identifier"]:
+            if n.type in [
+                "identifier",
+                "property_identifier",
+                "shorthand_property_identifier",
+                "type_identifier",
+            ]:
+
                 start_byte = n.start_byte
                 end_byte = n.end_byte
                 token_text = content[start_byte:end_byte]

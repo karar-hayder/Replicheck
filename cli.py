@@ -109,7 +109,6 @@ def main():
         print("\nAnalyzing code blocks...")
         duplicates = detector.find_duplicates(all_blocks)
 
-        # Generate report
         output_path = Path(args.output_file) if args.output_file else None
         reporter.generate_report(duplicates, output_path)
 

@@ -29,7 +29,6 @@ def test_main_with_empty_directory(tmp_path):
 
 def test_main_with_sample_code(tmp_path):
     """Test main function with sample code containing duplicates."""
-    # Create sample Python files with duplicate code
     file1 = tmp_path / "file1.py"
     file2 = tmp_path / "file2.py"
 

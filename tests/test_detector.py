@@ -12,7 +12,6 @@ from replicheck.detector import DuplicateDetector
 def test_find_duplicates():
     detector = DuplicateDetector(min_similarity=0.8, min_size=3)
 
-    # Test data
     code_blocks = [
         {
             "location": {"file": "test1.py", "start_line": 1, "end_line": 5},
