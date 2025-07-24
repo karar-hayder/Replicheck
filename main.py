@@ -14,6 +14,7 @@ from replicheck.reporter import Reporter
 from replicheck.utils import (
     analyze_cyclomatic_complexity,
     analyze_js_cyclomatic_complexity,
+    analyze_cs_cyclomatic_complexity,
     find_files,
     find_large_classes,
     find_large_files,
@@ -141,6 +142,7 @@ def main(
     Returns:
         int: Exit code (0 for success, 1 for error)
     """
+
     try:
         # Convert path to Path object
         path = Path(path)
@@ -154,7 +156,7 @@ def main(
 
         # Determine extensions
         if extensions is None:
-            extensions_set = {".py", ".js", ".jsx"}
+            extensions_set = {".py", ".js", ".jsx", ".cs"}
         else:
             extensions_set = set(
                 e if e.startswith(".") else f".{e}" for e in extensions
@@ -185,6 +187,12 @@ def main(
                     high_complexity.append(result)
             elif str(file).endswith(".js") or str(file).endswith(".jsx"):
                 for result in analyze_js_cyclomatic_complexity(
+                    file, threshold=complexity_threshold
+                ):
+                    result["threshold"] = complexity_threshold
+                    high_complexity.append(result)
+            elif str(file).endswith(".cs"):
+                for result in analyze_cs_cyclomatic_complexity(
                     file, threshold=complexity_threshold
                 ):
                     result["threshold"] = complexity_threshold

@@ -1,0 +1,2 @@
+C:\Users\Karar\Desktop\Programming\RandomProjects\Utils\Replicheck\utils\C#\ComplexityAnalyzer\bin\Release\net9.0\win-x64\publish\ComplexityAnalyzer.pdb
+C:\Users\Karar\Desktop\Programming\RandomProjects\Utils\Replicheck\utils\C#\ComplexityAnalyzer\bin\Release\net9.0\win-x64\publish\ComplexityAnalyzer.exe

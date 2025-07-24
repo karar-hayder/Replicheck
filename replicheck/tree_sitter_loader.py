@@ -1,6 +1,5 @@
-import tree_sitter_javascript as tsjs
-import tree_sitter_python as tspython
-from tree_sitter import Language
+from tree_sitter_language_pack import get_language, get_parser
 
-PYTHON = Language(tspython.language())
-JAVASCRIPT = Language(tsjs.language())
+PYTHON = get_language("python")
+JAVASCRIPT = get_language("javascript")
+CSHARP = get_language("csharp")
