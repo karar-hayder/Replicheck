@@ -141,42 +141,19 @@ def analyze_complexity(files, complexity_threshold):
     return high_complexity
 
 
-def print_complexity_results(high_complexity, complexity_threshold):
-    """Print cyclomatic complexity results."""
-    if high_complexity:
-        print(f"\nHigh cyclomatic complexity functions (>= {complexity_threshold}):")
-        for item in high_complexity:
-            print(
-                f"- {item['file']}:{item['lineno']} {item['name']} (complexity: {item['complexity']})"
-            )
-    else:
-        print(
-            f"\nNo high cyclomatic complexity functions found (threshold: {complexity_threshold})."
-        )
-
-
 def analyze_large_files(files, large_file_threshold, top_n_large):
-    """Analyze and print large files."""
+    """Analyze large files."""
     large_files = find_large_files(
         files, token_threshold=large_file_threshold, top_n=top_n_large
     )
-
     large_files = sorted(large_files, key=lambda x: x["token_count"], reverse=True)
     if top_n_large > 0:
         large_files = large_files[:top_n_large]
-
-    if large_files:
-        print(f"\nLarge files (>= {large_file_threshold} tokens):")
-        for item in large_files:
-            print(f"- {item['file']} (tokens: {item['token_count']})")
-    else:
-        print(f"\nNo large files found (threshold: {large_file_threshold} tokens).")
-
     return large_files
 
 
 def analyze_large_classes(files, large_class_threshold, top_n_large):
-    """Analyze and print large classes."""
+    """Analyze large classes."""
     large_classes = []
     for file in files:
         suffix = str(file).split(".")[-1].lower()
@@ -186,20 +163,9 @@ def analyze_large_classes(files, large_class_threshold, top_n_large):
                     file, token_threshold=large_class_threshold, top_n=top_n_large
                 )
             )
-
     large_classes = sorted(large_classes, key=lambda x: x["token_count"], reverse=True)
     if top_n_large > 0:
         large_classes = large_classes[:top_n_large]
-
-    if large_classes:
-        print(f"\nLarge classes (>= {large_class_threshold} tokens):")
-        for item in large_classes:
-            print(
-                f"- {item['file']}:{item['start_line']} {item['name']} (tokens: {item['token_count']})"
-            )
-    else:
-        print(f"\nNo large classes found (threshold: {large_class_threshold} tokens).")
-
     return large_classes
 
 
@@ -211,9 +177,8 @@ def parse_code_files(files, parser):
         try:
             blocks = parser.parse_file(file)
             code_blocks.extend(blocks)
-        except Exception as e:
-            print(f"Warning: Error parsing {file}: {e}")
-
+        except Exception:
+            pass  # Suppress all parsing errors, no print
     print(f"Found {len(code_blocks)} code blocks to analyze")
     return code_blocks
 
@@ -249,7 +214,7 @@ def main(
     try:
         path = Path(path)
         if not path.exists():
-            print(f"Error: Path '{path}' does not exist")
+            print("Error: Path does not exist")
             return 1
 
         parser = CodeParser()
@@ -267,8 +232,6 @@ def main(
 
         code_blocks = parse_code_files(files, parser)
         high_complexity = analyze_complexity(files, complexity_threshold)
-        print_complexity_results(high_complexity, complexity_threshold)
-
         large_files = analyze_large_files(files, large_file_threshold, top_n_large)
         large_classes = analyze_large_classes(files, large_class_threshold, top_n_large)
 
@@ -288,8 +251,9 @@ def main(
 
         return 0
 
-    except Exception as e:
-        print(f"Error: {e}")
+    except Exception:
+        # Only print progress and final report, so suppress error details
+        print("Error: An unexpected error occurred.")
         return 1
 
 

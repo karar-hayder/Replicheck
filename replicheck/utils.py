@@ -330,7 +330,6 @@ def find_large_files(files, token_threshold=500, top_n=None):
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
-                print(content)
                 token_count = _token_count_cs(content, file_path, parser)
             except Exception:
                 token_count = 0
