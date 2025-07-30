@@ -5,8 +5,10 @@ Code parsing and tokenization logic.
 import ast
 from pathlib import Path
 from typing import Any, Dict, List
-from tree_sitter import Parser
-from .tree_sitter_loader import JAVASCRIPT, PYTHON, get_parser, CSHARP, get_language
+
+from tree_sitter_language_pack import get_parser
+
+from .tree_sitter_loader import get_language
 
 
 class CodeParser:

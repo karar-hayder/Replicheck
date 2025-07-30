@@ -47,20 +47,20 @@ class Reporter:
         else:
             return path_str
 
+    def _count_severity(self, items, key="severity", level=None):
+        if not items:
+            return 0
+        if level:
+            return sum(1 for x in items if x.get(key) == level)
+        return len(items)
+
     def _generate_summary(
         self, complexity_results, large_files, large_classes, todo_fixme, duplicates
     ):
-        def count_severity(items, key="severity", level=None):
-            if not items:
-                return 0
-            if level:
-                return sum(1 for x in items if x.get(key) == level)
-            return len(items)
-
         summary = []
         # Complexity
-        n_complex = count_severity(complexity_results)
-        n_crit_complex = count_severity(complexity_results, level="Critical 🔴")
+        n_complex = self._count_severity(complexity_results)
+        n_crit_complex = self._count_severity(complexity_results, level="Critical 🔴")
         if n_complex:
             summary.append(
                 f"- {n_complex} high complexity functions ({n_crit_complex} Critical 🔴)"
@@ -68,8 +68,8 @@ class Reporter:
         else:
             summary.append("- 0 high complexity functions ✅")
         # Large files
-        n_large_files = count_severity(large_files)
-        n_crit_files = count_severity(large_files, level="Critical 🔴")
+        n_large_files = self._count_severity(large_files)
+        n_crit_files = self._count_severity(large_files, level="Critical 🔴")
         if n_large_files:
             summary.append(
                 f"- {n_large_files} large files ({n_crit_files} Critical 🔴)"
@@ -77,8 +77,8 @@ class Reporter:
         else:
             summary.append("- 0 large files ✅")
         # Large classes
-        n_large_classes = count_severity(large_classes)
-        n_high_classes = count_severity(large_classes, level="High 🟠")
+        n_large_classes = self._count_severity(large_classes)
+        n_high_classes = self._count_severity(large_classes, level="High 🟠")
         if n_large_classes:
             summary.append(
                 f"- {n_large_classes} large classes ({n_high_classes} High 🟠)"
@@ -101,37 +101,14 @@ class Reporter:
         )
         return summary
 
-    def _generate_text_report(
-        self,
-        duplicates: List[Dict[str, Any]],
-        output_file: Path = None,
-        complexity_results: List[Dict[str, Any]] = None,
-        large_files: List[Dict[str, Any]] = None,
-        large_classes: List[Dict[str, Any]] = None,
-        todo_fixme: List[Dict[str, Any]] = None,
-    ):
-        """Generate a human-readable text report."""
-        # Create two versions: one for console (with colors) and one for file (plain text)
-        console_output = []
-        file_output = []
+    # --- Section Generators for Text Report ---
 
-        console_output.append(
-            f"\n{Fore.CYAN}Code Duplication Report{Style.RESET_ALL}\n"
-        )
-        file_output.append("\nCode Duplication Report\n")
+    def _text_section_header(self, title, color=None):
+        if color:
+            return f"{color}{title}{Style.RESET_ALL}"
+        return title
 
-        summary_lines = self._generate_summary(
-            complexity_results, large_files, large_classes, todo_fixme, duplicates
-        )
-        console_output.append(f"{Fore.YELLOW}Summary:{Style.RESET_ALL}")
-        file_output.append("Summary:")
-        for line in summary_lines:
-            console_output.append(line)
-            file_output.append(line)
-        console_output.append("")
-        file_output.append("")
-
-        # Add cyclomatic complexity section
+    def _text_section_complexity(self, complexity_results, console_output, file_output):
         if complexity_results is not None:
             if complexity_results:
                 complexity_results = sorted(
@@ -142,11 +119,15 @@ class Reporter:
                     ),
                     reverse=True,
                 )
+                threshold = complexity_results[0].get("threshold", "N/A")
                 console_output.append(
-                    f"{Fore.MAGENTA}High Cyclomatic Complexity Functions (threshold: >= {complexity_results[0].get('threshold', 'N/A')}):{Style.RESET_ALL}"
+                    self._text_section_header(
+                        f"High Cyclomatic Complexity Functions (threshold: >= {threshold}):",
+                        Fore.MAGENTA,
+                    )
                 )
                 file_output.append(
-                    f"High Cyclomatic Complexity Functions (threshold: >= {complexity_results[0].get('threshold', 'N/A')}):"
+                    f"High Cyclomatic Complexity Functions (threshold: >= {threshold}):"
                 )
                 for item in complexity_results:
                     line = f"- {item['file']}:{item['lineno']} {item['name']} (complexity: {item['complexity']}) [{item['severity']}]"
@@ -154,12 +135,15 @@ class Reporter:
                     file_output.append(line)
             else:
                 console_output.append(
-                    f"{Fore.GREEN}No high cyclomatic complexity functions found.{Style.RESET_ALL}"
+                    self._text_section_header(
+                        "No high cyclomatic complexity functions found.", Fore.GREEN
+                    )
                 )
                 file_output.append("No high cyclomatic complexity functions found.")
             console_output.append("")
             file_output.append("")
-        # Add large files section
+
+    def _text_section_large_files(self, large_files, console_output, file_output):
         if large_files is not None:
             if large_files:
                 large_files = sorted(
@@ -175,7 +159,10 @@ class Reporter:
                 )
                 top_n = large_files[0].get("top_n", "N/A") if large_files else "N/A"
                 console_output.append(
-                    f"{Fore.MAGENTA}Large Files (threshold: >= {threshold}, top N: {top_n}):{Style.RESET_ALL}"
+                    self._text_section_header(
+                        f"Large Files (threshold: >= {threshold}, top N: {top_n}):",
+                        Fore.MAGENTA,
+                    )
                 )
                 file_output.append(
                     f"Large Files (threshold: >= {threshold}, top N: {top_n}):"
@@ -186,12 +173,13 @@ class Reporter:
                     file_output.append(line)
             else:
                 console_output.append(
-                    f"{Fore.GREEN}No large files found.{Style.RESET_ALL}"
+                    self._text_section_header("No large files found.", Fore.GREEN)
                 )
                 file_output.append("No large files found.")
             console_output.append("")
             file_output.append("")
-        # Add large classes section
+
+    def _text_section_large_classes(self, large_classes, console_output, file_output):
         if large_classes is not None:
             if large_classes:
                 large_classes = sorted(
@@ -207,7 +195,10 @@ class Reporter:
                 )
                 top_n = large_classes[0].get("top_n", "N/A") if large_classes else "N/A"
                 console_output.append(
-                    f"{Fore.MAGENTA}Large Classes (threshold: >= {threshold}, top N: {top_n}):{Style.RESET_ALL}"
+                    self._text_section_header(
+                        f"Large Classes (threshold: >= {threshold}, top N: {top_n}):",
+                        Fore.MAGENTA,
+                    )
                 )
                 file_output.append(
                     f"Large Classes (threshold: >= {threshold}, top N: {top_n}):"
@@ -218,16 +209,17 @@ class Reporter:
                     file_output.append(line)
             else:
                 console_output.append(
-                    f"{Fore.GREEN}No large classes found.{Style.RESET_ALL}"
+                    self._text_section_header("No large classes found.", Fore.GREEN)
                 )
                 file_output.append("No large classes found.")
             console_output.append("")
             file_output.append("")
-        # Add TODO/FIXME section
+
+    def _text_section_todo_fixme(self, todo_fixme, console_output, file_output):
         if todo_fixme is not None:
             if todo_fixme:
                 console_output.append(
-                    f"{Fore.MAGENTA}TODO/FIXME Comments:{Style.RESET_ALL}"
+                    self._text_section_header("TODO/FIXME Comments:", Fore.MAGENTA)
                 )
                 file_output.append("TODO/FIXME Comments:")
                 for item in todo_fixme:
@@ -236,21 +228,22 @@ class Reporter:
                     file_output.append(line)
             else:
                 console_output.append(
-                    f"{Fore.GREEN}No TODO/FIXME comments found.{Style.RESET_ALL}"
+                    self._text_section_header(
+                        "No TODO/FIXME comments found.", Fore.GREEN
+                    )
                 )
                 file_output.append("No TODO/FIXME comments found.")
             console_output.append("")
             file_output.append("")
 
-        # Add duplication section
+    def _text_section_duplicates(self, duplicates, console_output, file_output):
         if duplicates:
-            # Check if new or legacy format
             is_group_format = (
                 "num_duplicates" in duplicates[0] and "locations" in duplicates[0]
             )
             if is_group_format:
                 console_output.append(
-                    f"{Fore.MAGENTA}Code Duplications:{Style.RESET_ALL}"
+                    self._text_section_header("Code Duplications:", Fore.MAGENTA)
                 )
                 file_output.append("Code Duplications:")
                 for i, group in enumerate(duplicates, 1):
@@ -272,7 +265,6 @@ class Reporter:
                     console_output.append("")
                     file_output.append("")
             else:
-                # Legacy format: block1, block2, similarity
                 for i, dup in enumerate(duplicates, 1):
                     sim = dup.get("similarity", 0)
                     sim_pct = f"{sim*100:.2f}%" if isinstance(sim, float) else str(sim)
@@ -296,14 +288,70 @@ class Reporter:
                     file_output.append("")
         else:
             console_output.append(
-                f"{Fore.GREEN}No code duplications found!{Style.RESET_ALL}"
+                self._text_section_header("No code duplications found!", Fore.GREEN)
             )
             file_output.append("No code duplications found!")
 
+    def _generate_text_report(
+        self,
+        duplicates: List[Dict[str, Any]],
+        output_file: Path = None,
+        complexity_results: List[Dict[str, Any]] = None,
+        large_files: List[Dict[str, Any]] = None,
+        large_classes: List[Dict[str, Any]] = None,
+        todo_fixme: List[Dict[str, Any]] = None,
+    ):
+        """Generate a human-readable text report."""
+        console_output = []
+        file_output = []
+
+        # Header
+        console_output.append(
+            self._text_section_header("\nCode Duplication Report\n", Fore.CYAN)
+        )
+        file_output.append("\nCode Duplication Report\n")
+
+        # Summary
+        summary_lines = self._generate_summary(
+            complexity_results, large_files, large_classes, todo_fixme, duplicates
+        )
+        console_output.append(self._text_section_header("Summary:", Fore.YELLOW))
+        file_output.append("Summary:")
+        for line in summary_lines:
+            console_output.append(line)
+            file_output.append(line)
+        console_output.append("")
+        file_output.append("")
+
+        # Sections
+        self._text_section_complexity(complexity_results, console_output, file_output)
+        self._text_section_large_files(large_files, console_output, file_output)
+        self._text_section_large_classes(large_classes, console_output, file_output)
+        self._text_section_todo_fixme(todo_fixme, console_output, file_output)
+        self._text_section_duplicates(duplicates, console_output, file_output)
+
+        # Output
         if output_file:
             output_file.write_text("\n".join(file_output), encoding="utf-8")
         else:
             print("\n".join(console_output))
+
+    # --- JSON Report ---
+
+    def _convert_legacy_duplicates_to_group(self, duplicates):
+        new_duplicates = []
+        for dup in duplicates:
+            group = {
+                "size": dup.get("size", 0),
+                "num_duplicates": 2,
+                "locations": [dup.get("block1", {}), dup.get("block2", {})],
+                "cross_file": dup.get("block1", {}).get("file")
+                != dup.get("block2", {}).get("file"),
+                "tokens": dup.get("tokens", []),
+                "similarity": dup.get("similarity"),
+            }
+            new_duplicates.append(group)
+        return new_duplicates
 
     def _generate_json_report(
         self,
@@ -315,27 +363,13 @@ class Reporter:
         todo_fixme: List[Dict[str, Any]] = None,
     ):
         """Generate a JSON report."""
-        # Check if new or legacy format
         is_group_format = bool(
             duplicates
             and "num_duplicates" in duplicates[0]
             and "locations" in duplicates[0]
         )
         if not is_group_format:
-            # Convert legacy format to group-like for JSON output
-            new_duplicates = []
-            for dup in duplicates:
-                group = {
-                    "size": dup.get("size", 0),
-                    "num_duplicates": 2,
-                    "locations": [dup.get("block1", {}), dup.get("block2", {})],
-                    "cross_file": dup.get("block1", {}).get("file")
-                    != dup.get("block2", {}).get("file"),
-                    "tokens": dup.get("tokens", []),
-                    "similarity": dup.get("similarity"),
-                }
-                new_duplicates.append(group)
-            duplicates = new_duplicates
+            duplicates = self._convert_legacy_duplicates_to_group(duplicates)
 
         report = {
             "duplicates": duplicates,
@@ -358,54 +392,41 @@ class Reporter:
         else:
             print(json_str)
 
-    def _generate_markdown_report(
-        self,
-        duplicates: List[Dict[str, Any]],
-        output_file: Path = None,
-        complexity_results: List[Dict[str, Any]] = None,
-        large_files: List[Dict[str, Any]] = None,
-        large_classes: List[Dict[str, Any]] = None,
-        todo_fixme: List[Dict[str, Any]] = None,
-    ):
-        """Generate a Markdown report."""
-        md = []
-        md.append("# Code Duplication Report\n")
-        # Summary
-        md.append("## Summary")
-        for line in self._generate_summary(
-            complexity_results, large_files, large_classes, todo_fixme, duplicates
-        ):
-            md.append(f"- {line}")
-        md.append("")
-        # Complexity
+    # --- Markdown Report ---
+
+    def _markdown_section_complexity(self, complexity_results, md):
         if complexity_results:
             md.append("## High Cyclomatic Complexity Functions")
             for item in complexity_results:
                 md.append(
                     f"- {self._format_path(item['file'], item['lineno'], 'markdown')} {item['name']} (complexity: {item['complexity']}) [{item['severity']}]"
                 )
-        # Large files
+
+    def _markdown_section_large_files(self, large_files, md):
         if large_files:
             md.append("\n## Large Files")
             for item in large_files:
                 md.append(
                     f"- {self._format_path(item['file'], None, 'markdown')} (tokens: {item['token_count']}) [{item['severity']}]"
                 )
-        # Large classes
+
+    def _markdown_section_large_classes(self, large_classes, md):
         if large_classes:
             md.append("\n## Large Classes")
             for item in large_classes:
                 md.append(
                     f"- {self._format_path(item['file'], item['start_line'], 'markdown')} {item['name']} (tokens: {item['token_count']}) [{item['severity']}]"
                 )
-        # TODO/FIXME
+
+    def _markdown_section_todo_fixme(self, todo_fixme, md):
         if todo_fixme:
             md.append("\n## TODO/FIXME Comments")
             for item in todo_fixme:
                 md.append(
                     f"- {self._format_path(item['file'], item['line'], 'markdown')} [{item['type']}] {item['text']}"
                 )
-        # Duplicates
+
+    def _markdown_section_duplicates(self, duplicates, md):
         if duplicates:
             md.append("\n## Code Duplications")
             is_group_format = (
@@ -446,11 +467,38 @@ class Reporter:
                         md.append(f"    Tokens: {snippet}")
         else:
             md.append("No code duplications found!")
+
+    def _generate_markdown_report(
+        self,
+        duplicates: List[Dict[str, Any]],
+        output_file: Path = None,
+        complexity_results: List[Dict[str, Any]] = None,
+        large_files: List[Dict[str, Any]] = None,
+        large_classes: List[Dict[str, Any]] = None,
+        todo_fixme: List[Dict[str, Any]] = None,
+    ):
+        """Generate a Markdown report."""
+        md = []
+        md.append("# Code Duplication Report\n")
+        # Summary
+        md.append("## Summary")
+        for line in self._generate_summary(
+            complexity_results, large_files, large_classes, todo_fixme, duplicates
+        ):
+            md.append(f"- {line}")
+        md.append("")
+        self._markdown_section_complexity(complexity_results, md)
+        self._markdown_section_large_files(large_files, md)
+        self._markdown_section_large_classes(large_classes, md)
+        self._markdown_section_todo_fixme(todo_fixme, md)
+        self._markdown_section_duplicates(duplicates, md)
         md_str = "\n".join(md)
         if output_file:
             output_file.write_text(md_str, encoding="utf-8")
         else:
             print(md_str)
+
+    # --- Main Report Generator ---
 
     def generate_report(
         self,

@@ -37,4 +37,4 @@ Please be respectful and considerate in all interactions. We follow the [Contrib
 
 ---
 
-## Thank you for helping make Replicheck better  
+## Thank you for helping make Replicheck better

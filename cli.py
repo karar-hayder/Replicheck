@@ -6,7 +6,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from replicheck import CodeParser, Config, DuplicateDetector, Reporter
+from replicheck import CodeParser, DuplicateDetector, Reporter
 from replicheck.utils import find_files
 
 

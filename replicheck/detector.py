@@ -4,10 +4,6 @@ Core duplication detection logic.
 
 from typing import Any, Dict, List
 
-from tqdm import tqdm
-
-from .utils import calculate_similarity
-
 
 class DuplicateDetector:
     def __init__(self, min_similarity: float = 0.8, min_size: int = 50):
