@@ -4,8 +4,6 @@ Tests for the code parser functionality.
 
 from pathlib import Path
 
-import pytest
-
 from replicheck.parser import CodeParser
 
 
@@ -50,7 +48,7 @@ class TestClass {
     constructor() {
         this.value = 0;
     }
-    
+
     getValue() {
         return this.value;
     }

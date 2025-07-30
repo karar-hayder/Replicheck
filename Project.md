@@ -117,7 +117,7 @@ MIT License
 
 ---
 
-**This document provides a high-level summary and actionable roadmap for Replicheck.**  
+**This document provides a high-level summary and actionable roadmap for Replicheck.**
 For more details, see the [README.md](README.md) and the codebase itself.
 
 ---

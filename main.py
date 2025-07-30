@@ -12,9 +12,9 @@ from replicheck.detector import DuplicateDetector
 from replicheck.parser import CodeParser
 from replicheck.reporter import Reporter
 from replicheck.utils import (
+    analyze_cs_cyclomatic_complexity,
     analyze_cyclomatic_complexity,
     analyze_js_cyclomatic_complexity,
-    analyze_cs_cyclomatic_complexity,
     find_files,
     find_large_classes,
     find_large_files,
@@ -115,6 +115,109 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def analyze_complexity(files, complexity_threshold):
+    """Analyze cyclomatic complexity for all files."""
+    high_complexity = []
+    for file in files:
+        suffix = str(file).split(".")[-1].lower()
+        if suffix == "py":
+            for result in analyze_cyclomatic_complexity(
+                file, threshold=complexity_threshold
+            ):
+                result["threshold"] = complexity_threshold
+                high_complexity.append(result)
+        elif suffix in ["js", "jsx", "ts", "tsx"]:
+            for result in analyze_js_cyclomatic_complexity(
+                file, threshold=complexity_threshold
+            ):
+                result["threshold"] = complexity_threshold
+                high_complexity.append(result)
+        elif suffix == "cs":
+            for result in analyze_cs_cyclomatic_complexity(
+                file, threshold=complexity_threshold
+            ):
+                result["threshold"] = complexity_threshold
+                high_complexity.append(result)
+    return high_complexity
+
+
+def print_complexity_results(high_complexity, complexity_threshold):
+    """Print cyclomatic complexity results."""
+    if high_complexity:
+        print(f"\nHigh cyclomatic complexity functions (>= {complexity_threshold}):")
+        for item in high_complexity:
+            print(
+                f"- {item['file']}:{item['lineno']} {item['name']} (complexity: {item['complexity']})"
+            )
+    else:
+        print(
+            f"\nNo high cyclomatic complexity functions found (threshold: {complexity_threshold})."
+        )
+
+
+def analyze_large_files(files, large_file_threshold, top_n_large):
+    """Analyze and print large files."""
+    large_files = find_large_files(
+        files, token_threshold=large_file_threshold, top_n=top_n_large
+    )
+
+    large_files = sorted(large_files, key=lambda x: x["token_count"], reverse=True)
+    if top_n_large > 0:
+        large_files = large_files[:top_n_large]
+
+    if large_files:
+        print(f"\nLarge files (>= {large_file_threshold} tokens):")
+        for item in large_files:
+            print(f"- {item['file']} (tokens: {item['token_count']})")
+    else:
+        print(f"\nNo large files found (threshold: {large_file_threshold} tokens).")
+
+    return large_files
+
+
+def analyze_large_classes(files, large_class_threshold, top_n_large):
+    """Analyze and print large classes."""
+    large_classes = []
+    for file in files:
+        suffix = str(file).split(".")[-1].lower()
+        if suffix in ["py", "js", "jsx", "cs", "ts", "tsx"]:
+            large_classes.extend(
+                find_large_classes(
+                    file, token_threshold=large_class_threshold, top_n=top_n_large
+                )
+            )
+
+    large_classes = sorted(large_classes, key=lambda x: x["token_count"], reverse=True)
+    if top_n_large > 0:
+        large_classes = large_classes[:top_n_large]
+
+    if large_classes:
+        print(f"\nLarge classes (>= {large_class_threshold} tokens):")
+        for item in large_classes:
+            print(
+                f"- {item['file']}:{item['start_line']} {item['name']} (tokens: {item['token_count']})"
+            )
+    else:
+        print(f"\nNo large classes found (threshold: {large_class_threshold} tokens).")
+
+    return large_classes
+
+
+def parse_code_files(files, parser):
+    """Parse all code files and extract code blocks."""
+    print("Parsing files...")
+    code_blocks = []
+    for file in files:
+        try:
+            blocks = parser.parse_file(file)
+            code_blocks.extend(blocks)
+        except Exception as e:
+            print(f"Warning: Error parsing {file}: {e}")
+
+    print(f"Found {len(code_blocks)} code blocks to analyze")
+    return code_blocks
+
+
 def main(
     path: str,
     min_similarity: float = 0.8,
@@ -156,98 +259,18 @@ def main(
         if extensions is None:
             extensions_set = {".py", ".js", ".jsx", ".cs", ".ts", ".tsx"}
         else:
-            extensions_set = set(
-                e if e.startswith(".") else f".{e}" for e in extensions
-            )
+            extensions_set = {e if e.startswith(".") else f".{e}" for e in extensions}
 
         print("Finding files...")
         files = find_files(path, extensions=extensions_set, ignore_dirs=ignore_dirs)
         print(f"Found {len(files)} files to analyze")
 
-        print("Parsing files...")
-        code_blocks = []
-        for file in files:
-            try:
-                blocks = parser.parse_file(file)
-                code_blocks.extend(blocks)
-            except Exception as e:
-                print(f"Warning: Error parsing {file}: {e}")
+        code_blocks = parse_code_files(files, parser)
+        high_complexity = analyze_complexity(files, complexity_threshold)
+        print_complexity_results(high_complexity, complexity_threshold)
 
-        print(f"Found {len(code_blocks)} code blocks to analyze")
-
-        high_complexity = []
-        for file in files:
-            suffix = str(file).split(".")[-1].lower()
-            if suffix == "py":
-                for result in analyze_cyclomatic_complexity(
-                    file, threshold=complexity_threshold
-                ):
-                    result["threshold"] = complexity_threshold
-                    high_complexity.append(result)
-            elif suffix in ["js", "jsx", "ts", "tsx"]:
-                for result in analyze_js_cyclomatic_complexity(
-                    file, threshold=complexity_threshold
-                ):
-                    result["threshold"] = complexity_threshold
-                    high_complexity.append(result)
-            elif suffix == "cs":
-                for result in analyze_cs_cyclomatic_complexity(
-                    file, threshold=complexity_threshold
-                ):
-                    result["threshold"] = complexity_threshold
-                    high_complexity.append(result)
-        if high_complexity:
-            print(
-                f"\nHigh cyclomatic complexity functions (>= {complexity_threshold}):"
-            )
-            for item in high_complexity:
-                print(
-                    f"- {item['file']}:{item['lineno']} {item['name']} (complexity: {item['complexity']})"
-                )
-        else:
-            print(
-                f"\nNo high cyclomatic complexity functions found (threshold: {complexity_threshold})."
-            )
-
-        large_files = find_large_files(
-            files, token_threshold=large_file_threshold, top_n=top_n_large
-        )
-
-        large_files = sorted(large_files, key=lambda x: x["token_count"], reverse=True)
-        if top_n_large > 0:
-            large_files = large_files[:top_n_large]
-        if large_files:
-            print(f"\nLarge files (>= {large_file_threshold} tokens):")
-            for item in large_files:
-                print(f"- {item['file']} (tokens: {item['token_count']})")
-        else:
-            print(f"\nNo large files found (threshold: {large_file_threshold} tokens).")
-
-        large_classes = []
-        for file in files:
-            suffix = str(file).split(".")[-1].lower()
-            if suffix in ["py", "js", "jsx", "cs", "ts", "tsx"]:
-                large_classes.extend(
-                    find_large_classes(
-                        file, token_threshold=large_class_threshold, top_n=top_n_large
-                    )
-                )
-
-        large_classes = sorted(
-            large_classes, key=lambda x: x["token_count"], reverse=True
-        )
-        if top_n_large > 0:
-            large_classes = large_classes[:top_n_large]
-        if large_classes:
-            print(f"\nLarge classes (>= {large_class_threshold} tokens):")
-            for item in large_classes:
-                print(
-                    f"- {item['file']}:{item['start_line']} {item['name']} (tokens: {item['token_count']})"
-                )
-        else:
-            print(
-                f"\nNo large classes found (threshold: {large_class_threshold} tokens)."
-            )
+        large_files = analyze_large_files(files, large_file_threshold, top_n_large)
+        large_classes = analyze_large_classes(files, large_class_threshold, top_n_large)
 
         print("Analyzing code blocks...")
         duplicates = detector.find_duplicates(code_blocks)

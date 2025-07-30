@@ -2,8 +2,6 @@
 Tests for the utils module.
 """
 
-from pathlib import Path
-
 from replicheck.utils import calculate_similarity, find_files, get_file_hash
 
 
@@ -100,10 +98,6 @@ def bar():
 
 
 def test_find_large_files(tmp_path):
-    code = """
-def foo():
-    pass
-"""
     # Create a file with many tokens
     file = tmp_path / "large.py"
     file.write_text(
@@ -120,11 +114,6 @@ def foo():
 
 
 def test_find_large_classes(tmp_path):
-    code = """
-class Big:
-    def foo(self):
-        x = 1
-"""
     # Create a class with many tokens
     class_code = "class Big:\n    def foo(self):\n        x = 1\n" + (
         "    def bar(self):\n        y = 2\n" * 150
@@ -494,13 +483,15 @@ def test_analyze_tsx_cyclomatic_complexity(tmp_path):
 
 
 def test_find_large_files_cs(tmp_path):
-    cs_code = """
-    using System;
-    namespace TestNamespace {
-        class SmallClass { void SmallMethod() { int x = 1; } }
-    }
-""" + (
-        "   int a = 1;\n" * 100
+    cs_code = (
+        """
+using System;
+namespace TestNamespace {
+    class SmallClass { void SmallMethod() { int x = 1; } }
+
+"""
+        + ("    int a = 1;\n" * 100)
+        + "}\n"
     )
     file = tmp_path / "big.cs"
     file.write_text(cs_code)

@@ -2,10 +2,6 @@
 Tests for the code detector functionality.
 """
 
-from pathlib import Path
-
-import pytest
-
 from replicheck.detector import DuplicateDetector
 
 

@@ -2,10 +2,6 @@
 Extra tests for the parser module to improve coverage.
 """
 
-from pathlib import Path
-
-import pytest
-
 from replicheck.parser import CodeParser
 
 
