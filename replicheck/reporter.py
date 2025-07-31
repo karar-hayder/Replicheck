@@ -55,7 +55,13 @@ class Reporter:
         return len(items)
 
     def _generate_summary(
-        self, complexity_results, large_files, large_classes, todo_fixme, duplicates
+        self,
+        complexity_results,
+        large_files,
+        large_classes,
+        unused,
+        todo_fixme,
+        duplicates,
     ):
         summary = []
         # Complexity
@@ -85,6 +91,13 @@ class Reporter:
             )
         else:
             summary.append("- 0 large classes ✅")
+        # Unused imports/variables
+        n_unused = len(unused) if unused else 0
+        summary.append(
+            f"- {n_unused} unused imports/variables"
+            if n_unused
+            else "- 0 unused imports/variables ✅"
+        )
         # TODO/FIXME
         n_todo = len(todo_fixme) if todo_fixme else 0
         summary.append(
@@ -215,6 +228,27 @@ class Reporter:
             console_output.append("")
             file_output.append("")
 
+    def _text_section_unused(self, unused, console_output, file_output):
+        if unused is not None:
+            if unused:
+                console_output.append(
+                    self._text_section_header("Unused Imports and Vars:", Fore.MAGENTA)
+                )
+                file_output.append("Unused Imports and Vars:")
+                for item in unused:
+                    line = f"- {item['file']}:{item['line']} [{item['code']}] {item['message']}"
+                    console_output.append(line)
+                    file_output.append(line)
+            else:
+                console_output.append(
+                    self._text_section_header(
+                        "No unused imports or variables found.", Fore.GREEN
+                    )
+                )
+                file_output.append("No unused imports or variables found.")
+            console_output.append("")
+            file_output.append("")
+
     def _text_section_todo_fixme(self, todo_fixme, console_output, file_output):
         if todo_fixme is not None:
             if todo_fixme:
@@ -299,6 +333,7 @@ class Reporter:
         complexity_results: List[Dict[str, Any]] = None,
         large_files: List[Dict[str, Any]] = None,
         large_classes: List[Dict[str, Any]] = None,
+        unused: List[Dict[str, Any]] = None,
         todo_fixme: List[Dict[str, Any]] = None,
     ):
         """Generate a human-readable text report."""
@@ -313,7 +348,12 @@ class Reporter:
 
         # Summary
         summary_lines = self._generate_summary(
-            complexity_results, large_files, large_classes, todo_fixme, duplicates
+            complexity_results,
+            large_files,
+            large_classes,
+            unused,
+            todo_fixme,
+            duplicates,
         )
         console_output.append(self._text_section_header("Summary:", Fore.YELLOW))
         file_output.append("Summary:")
@@ -327,6 +367,7 @@ class Reporter:
         self._text_section_complexity(complexity_results, console_output, file_output)
         self._text_section_large_files(large_files, console_output, file_output)
         self._text_section_large_classes(large_classes, console_output, file_output)
+        self._text_section_unused(unused, console_output, file_output)
         self._text_section_todo_fixme(todo_fixme, console_output, file_output)
         self._text_section_duplicates(duplicates, console_output, file_output)
 
@@ -360,6 +401,7 @@ class Reporter:
         complexity_results: List[Dict[str, Any]] = None,
         large_files: List[Dict[str, Any]] = None,
         large_classes: List[Dict[str, Any]] = None,
+        unused: List[Dict[str, Any]] = None,
         todo_fixme: List[Dict[str, Any]] = None,
     ):
         """Generate a JSON report."""
@@ -384,6 +426,7 @@ class Reporter:
                 large_classes[0].get("threshold", "N/A") if large_classes else None
             ),
             "top_n_large": large_files[0].get("top_n", "N/A") if large_files else None,
+            "unused": unused or [],
             "todo_fixme_comments": todo_fixme or [],
         }
         json_str = json.dumps(report, indent=2)
@@ -416,6 +459,14 @@ class Reporter:
             for item in large_classes:
                 md.append(
                     f"- {self._format_path(item['file'], item['start_line'], 'markdown')} {item['name']} (tokens: {item['token_count']}) [{item['severity']}]"
+                )
+
+    def _markdown_section_unused(self, unused, md):
+        if unused:
+            md.append("## Unused Imports and Vars")
+            for item in unused:
+                md.append(
+                    f"- {self._format_path(item['file'], item['line'], 'markdown')} [{item['code']}] {item['message']}"
                 )
 
     def _markdown_section_todo_fixme(self, todo_fixme, md):
@@ -475,6 +526,7 @@ class Reporter:
         complexity_results: List[Dict[str, Any]] = None,
         large_files: List[Dict[str, Any]] = None,
         large_classes: List[Dict[str, Any]] = None,
+        unused: List[Dict[str, Any]] = None,
         todo_fixme: List[Dict[str, Any]] = None,
     ):
         """Generate a Markdown report."""
@@ -483,13 +535,19 @@ class Reporter:
         # Summary
         md.append("## Summary")
         for line in self._generate_summary(
-            complexity_results, large_files, large_classes, todo_fixme, duplicates
+            complexity_results,
+            large_files,
+            large_classes,
+            unused,
+            todo_fixme,
+            duplicates,
         ):
             md.append(f"- {line}")
         md.append("")
         self._markdown_section_complexity(complexity_results, md)
         self._markdown_section_large_files(large_files, md)
         self._markdown_section_large_classes(large_classes, md)
+        self._markdown_section_unused(unused, md)
         self._markdown_section_todo_fixme(todo_fixme, md)
         self._markdown_section_duplicates(duplicates, md)
         md_str = "\n".join(md)
@@ -507,6 +565,7 @@ class Reporter:
         complexity_results: List[Dict[str, Any]] = None,
         large_files: List[Dict[str, Any]] = None,
         large_classes: List[Dict[str, Any]] = None,
+        unused: List[Dict[str, Any]] = None,
         todo_fixme: List[Dict[str, Any]] = None,
     ):
         """
@@ -518,6 +577,7 @@ class Reporter:
             complexity_results: List of high-complexity functions (optional)
             large_files: List of large files (optional)
             large_classes: List of large classes (optional)
+            unused: List of unused imports and vars (optional)
             todo_fixme: List of TODO/FIXME comments (optional)
         """
         try:
@@ -528,6 +588,7 @@ class Reporter:
                     complexity_results,
                     large_files,
                     large_classes,
+                    unused,
                     todo_fixme,
                 )
             elif self.output_format == "markdown":
@@ -537,6 +598,7 @@ class Reporter:
                     complexity_results,
                     large_files,
                     large_classes,
+                    unused,
                     todo_fixme,
                 )
             else:
@@ -546,6 +608,7 @@ class Reporter:
                     complexity_results,
                     large_files,
                     large_classes,
+                    unused,
                     todo_fixme,
                 )
 
