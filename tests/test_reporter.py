@@ -293,17 +293,19 @@ def test_reporter_generate_summary_edge_cases():
     """Test _generate_summary with various edge cases."""
     reporter = Reporter()
 
-    summary = reporter._generate_summary(None, None, None, None, None)
-    assert len(summary) == 5
+    # All None
+    summary = reporter._generate_summary(None, None, None, None, None, None)
+    assert len(summary) == 6
     assert "0 high complexity functions ✅" in summary[0]
     assert "0 large files ✅" in summary[1]
     assert "0 large classes ✅" in summary[2]
-    assert "0 TODO/FIXME comments ✅" in summary[3]
-    assert "0 duplicate code blocks ✅" in summary[4]
+    assert "0 unused imports/variables ✅" in summary[3]
+    assert "0 TODO/FIXME comments ✅" in summary[4]
+    assert "0 duplicate code blocks ✅" in summary[5]
 
     # Test with empty lists
-    summary = reporter._generate_summary([], [], [], [], [])
-    assert len(summary) == 5
+    summary = reporter._generate_summary([], [], [], [], [], [])
+    assert len(summary) == 6
     assert "0 high complexity functions ✅" in summary[0]
 
     # Test with some data
@@ -319,6 +321,9 @@ def test_reporter_generate_summary_edge_cases():
     large_classes = [
         {"severity": "High 🟠"},
     ]
+    unused = [
+        {"file": "test.py", "line": 1, "code": "F401", "message": "unused import"},
+    ]
     todo_fixme = [
         {"file": "test.py", "line": 1, "type": "TODO", "text": "test"},
     ]
@@ -327,13 +332,14 @@ def test_reporter_generate_summary_edge_cases():
     ]
 
     summary = reporter._generate_summary(
-        complexity_results, large_files, large_classes, todo_fixme, duplicates
+        complexity_results, large_files, large_classes, unused, todo_fixme, duplicates
     )
     assert "3 high complexity functions (1 Critical 🔴)" in summary[0]
     assert "2 large files (1 Critical 🔴)" in summary[1]
     assert "1 large classes (1 High 🟠)" in summary[2]
-    assert "1 TODO/FIXME comments" in summary[3]
-    assert "1 duplicate code blocks" in summary[4]
+    assert "1 unused imports/variables" in summary[3]
+    assert "1 TODO/FIXME comments" in summary[4]
+    assert "1 duplicate code blocks" in summary[5]
 
 
 def test_reporter_markdown_output(tmp_path):
@@ -618,3 +624,48 @@ def test_reporter_markdown_console_output(capsys):
     captured = capsys.readouterr()
     assert "# Code Duplication Report" in captured.out
     assert "## Code Duplications" in captured.out
+
+
+def test_reporter_text_section_unused(capsys):
+    # Test the _text_section_unused method in Reporter
+    from replicheck.reporter import Reporter
+
+    unused = [
+        {
+            "file": "foo.py",
+            "line": 2,
+            "code": "F401",
+            "message": "imported but unused",
+        },
+        {
+            "file": "foo.py",
+            "line": 3,
+            "code": "F841",
+            "message": "assigned to but never used",
+        },
+    ]
+    reporter = Reporter(output_format="text")
+    console_output = []
+    file_output = []
+    reporter._text_section_unused(unused, console_output, file_output)
+    # Should mention both F401 and F841
+    assert any("F401" in line for line in console_output)
+    assert any("F841" in line for line in console_output)
+    assert any("imported but unused" in line for line in console_output)
+    assert any("assigned to but never used" in line for line in console_output)
+    # Should have section header
+    assert any("Unused Imports and Vars" in line for line in console_output)
+
+
+def test_reporter_text_section_unused_empty():
+    from replicheck.reporter import Reporter
+
+    reporter = Reporter(output_format="text")
+    console_output = []
+    file_output = []
+    reporter._text_section_unused([], console_output, file_output)
+    # Should mention no unused imports or variables found
+    assert any(
+        "No unused imports or variables found" in line for line in console_output
+    )
+    assert any("No unused imports or variables found" in line for line in file_output)

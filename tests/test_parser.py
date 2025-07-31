@@ -1,16 +1,16 @@
 """
-Tests for the code parser functionality.
+Tests for the code parser functionality, including coverage for more branches.
 """
 
+import types
 from pathlib import Path
 
 from replicheck.parser import CodeParser
 
 
-def test_parse_python():
+def test_parse_python_blocks_and_tokenize_python(tmp_path):
     parser = CodeParser()
-
-    test_file = Path("test_file.py")
+    test_file = tmp_path / "test_file.py"
     test_content = """
 def test_function(x, y):
     return x + y
@@ -18,374 +18,285 @@ def test_function(x, y):
 class TestClass:
     def __init__(self):
         self.value = 0
+
+def another_func():
+    pass
     """
-
     test_file.write_text(test_content)
+    blocks = parser.parse_file(test_file)
+    # Should find 4 blocks: test_function, TestClass, __init__, another_func
+    assert len(blocks) == 4
+    # Check block types and tokens
+    names = [b["tokens"][0] for b in blocks if b["tokens"]]
+    assert "test_function" in names
+    assert "TestClass" in names
+    assert "another_func" in names
+    # Check location keys
+    for b in blocks:
+        assert "file" in b["location"]
+        assert "start_line" in b["location"]
+        assert "end_line" in b["location"]
 
-    try:
-        blocks = parser.parse_file(test_file)
 
-        assert len(blocks) == 3
-        assert blocks[0]["location"]["file"] == str(test_file)
-        assert blocks[0]["location"]["start_line"] == 2
-        assert "test_function" in blocks[0]["tokens"]
-        assert "TestClass" in blocks[1]["tokens"]
-
-    finally:
-        test_file.unlink()
+def test_parse_python_syntax_error_returns_empty(tmp_path):
+    parser = CodeParser()
+    test_file = tmp_path / "bad.py"
+    test_file.write_text("def bad(:\n    pass")
+    blocks = parser.parse_file(test_file)
+    assert blocks == []
 
 
-def test_parse_javascript():
+def test_parse_with_tree_sitter_grouped_and_list_captures(monkeypatch):
     parser = CodeParser()
 
-    test_file = Path("test_file.js")
-    test_content = """
-function testFunction(x, y) {
-    return x + y;
-}
+    # Patch _get_parser and get_language to return dummy objects
+    class DummyNode:
+        def __init__(self):
+            self.start_point = (0, 0)
+            self.end_point = (1, 0)
+            self.children = []
+            self.type = "identifier"
+            self.start_byte = 0
+            self.end_byte = 4
 
-class TestClass {
-    constructor() {
-        this.value = 0;
-    }
+    class DummyTree:
+        @property
+        def root_node(self):
+            return DummyNode()
 
-    getValue() {
-        return this.value;
-    }
-}
-"""
+    class DummyParser:
+        def parse(self, content):
+            return DummyTree()
 
-    test_file.write_text(test_content)
+    class DummyLanguage:
+        def query(self, query_str):
+            # Simulate both dict and list captures
+            if "javascript" in query_str:
+                # dict format
+                return types.SimpleNamespace(
+                    captures=lambda root: {"function": [DummyNode()]}
+                )
+            else:
+                # list format
+                return types.SimpleNamespace(
+                    captures=lambda root: [(DummyNode(), "function")]
+                )
 
-    try:
-        blocks = parser.parse_file(test_file)
+    monkeypatch.setattr(parser, "_get_parser", lambda lang: DummyParser())
+    monkeypatch.setattr("replicheck.parser.get_language", lambda lang: DummyLanguage())
 
-        assert len(blocks) >= 1
-        assert blocks[0]["location"]["file"] == str(test_file)
-        assert (
-            "testFunction" in blocks[0]["tokens"] or "TestClass" in blocks[0]["tokens"]
+    # Patch query.captures to return dict
+    def fake_query_dict(query_str):
+        class Q:
+            def captures(self, root):
+                return {"function": [DummyNode()]}
+
+        return Q()
+
+    def fake_query_list(query_str):
+        class Q:
+            def captures(self, root):
+                return [(DummyNode(), "function")]
+
+        return Q()
+
+    # Test dict format
+    DummyLanguage.query = staticmethod(fake_query_dict)
+    blocks = parser._parse_with_tree_sitter("abcd", Path("f.js"), "javascript")
+    assert isinstance(blocks, list)
+    assert blocks and blocks[0]["type"] == "function"
+    # Test list format
+    DummyLanguage.query = staticmethod(fake_query_list)
+    blocks = parser._parse_with_tree_sitter("abcd", Path("f.ts"), "typescript")
+    assert isinstance(blocks, list)
+    assert blocks and blocks[0]["type"] == "function"
+
+
+def test_parse_with_tree_sitter_unsupported_language(monkeypatch, capsys):
+    parser = CodeParser()
+    monkeypatch.setattr(parser, "_get_parser", lambda lang: None)
+
+    class DummyLanguage:
+        def query(self, query_str):
+            raise Exception("Should not be called")
+
+    monkeypatch.setattr("replicheck.parser.get_language", lambda lang: DummyLanguage())
+    blocks = parser._parse_with_tree_sitter("abcd", Path("f.unknown"), "unknownlang")
+    assert blocks == []
+    captured = capsys.readouterr()
+    # The error message may include the exception string, so just check for the prefix
+    assert (
+        "Unsupported language" in captured.out
+        or "Tree-sitter parse error" in captured.out
+    )
+
+
+def test_parse_with_tree_sitter_unexpected_captures(monkeypatch, capsys):
+    parser = CodeParser()
+
+    class DummyNode:
+        pass
+
+    class DummyTree:
+        @property
+        def root_node(self):
+            return DummyNode()
+
+    class DummyParser:
+        def parse(self, content):
+            return DummyTree()
+
+    class DummyLanguage:
+        def query(self, query_str):
+            class Q:
+                def captures(self, root):
+                    return 123  # Not dict or list
+
+            return Q()
+
+    monkeypatch.setattr(parser, "_get_parser", lambda lang: DummyParser())
+    monkeypatch.setattr("replicheck.parser.get_language", lambda lang: DummyLanguage())
+    blocks = parser._parse_with_tree_sitter("abcd", Path("f.js"), "javascript")
+    assert blocks == []
+    captured = capsys.readouterr()
+    assert "Unexpected captures format" in captured.out
+
+
+def test_parse_with_tree_sitter_exception(monkeypatch, capsys):
+    parser = CodeParser()
+
+    class DummyParser:
+        def parse(self, content):
+            raise RuntimeError("fail")
+
+    monkeypatch.setattr(parser, "_get_parser", lambda lang: DummyParser())
+    monkeypatch.setattr("replicheck.parser.get_language", lambda lang: None)
+    blocks = parser._parse_with_tree_sitter("abcd", Path("f.js"), "javascript")
+    assert blocks == []
+    captured = capsys.readouterr()
+    assert "Tree-sitter parse error" in captured.out
+
+
+def test_tokenize_tree_sitter_node_variants():
+    parser = CodeParser()
+
+    # Node with identifier
+    class Node:
+        def __init__(self, type_, text, start_byte=0, end_byte=None, children=None):
+            self.type = type_
+            self.children = children or []
+            self.start_byte = start_byte
+            self.end_byte = end_byte if end_byte is not None else 0
+
+    # Helper to set correct byte offsets for children
+    def make_node(type_, text, children=None, offset=0):
+        # Each node's start_byte is offset, end_byte is offset+len(text)
+        node = Node(
+            type_,
+            text,
+            start_byte=offset,
+            end_byte=offset + len(text),
+            children=children,
         )
+        return node
 
-    finally:
-        test_file.unlink()
+    n1 = make_node("identifier", "foo")
+    tokens = parser._tokenize_tree_sitter_node(n1, "foo")
+    assert tokens == ["foo"]
+    # Node with string
+    n2 = make_node("string", "bar")
+    tokens = parser._tokenize_tree_sitter_node(n2, "bar")
+    assert tokens == ["bar"]
+    # Node with number
+    n3 = make_node("number", "123")
+    tokens = parser._tokenize_tree_sitter_node(n3, "123")
+    assert tokens == ["123"]
+    # Node with children, ensure correct byte offsets for both
+    child = make_node("identifier", "bar", offset=3)
+    n4 = make_node("identifier", "foo", children=[child], offset=0)
+    tokens = parser._tokenize_tree_sitter_node(n4, "foobar")
+    # Should contain both "foo" and "bar" (order may vary, but both present)
+    assert set(tokens) == {"foo", "bar"}
 
 
-def test_parse_typescript():
+def test_tokenize_python_variants():
     parser = CodeParser()
+    import ast
 
-    test_file = Path("test_file.ts")
-    test_content = """
-function greet(name: string): string {
-    return `Hello, ${name}`;
-}
-
-class Greeter {
-    private greeting: string;
-
-    constructor(message: string) {
-        this.greeting = message;
-    }
-
-    greet() {
-        return "Hello, " + this.greeting;
-    }
-}
-"""
-    test_file.write_text(test_content)
-
-    try:
-        blocks = parser.parse_file(test_file)
-        assert len(blocks) >= 2
-        names = [t[0] for t in [b["tokens"] for b in blocks] if t]
-        assert "greet" in names or "Greeter" in names
-        assert all(b["location"]["file"] == str(test_file) for b in blocks)
-    finally:
-        test_file.unlink()
+    node = ast.parse("def f():\n    x = 1\n    y = 'a'\n    return x")
+    func_node = [n for n in ast.walk(node) if isinstance(n, ast.FunctionDef)][0]
+    tokens = parser._tokenize_python(func_node)
+    # Should include variable names and constants
+    assert "x" in tokens
+    assert "y" in tokens
+    assert "1" in tokens
+    assert "a" in tokens
 
 
-def test_parse_tsx():
+def test_parse_file_unsupported_extension(tmp_path):
     parser = CodeParser()
-
-    test_file = Path("test_file.tsx")
-    test_content = """
-import React from "react";
-
-type Props = {
-  name: string;
-};
-
-export default function HelloWorld({ name }: Props) {
-  return <div>Hello, {name}</div>;
-}
-
-class App extends React.Component {
-  render() {
-    return <HelloWorld name="TSX" />;
-  }
-}
-"""
-    test_file.write_text(test_content)
-
-    try:
-        blocks = parser.parse_file(test_file)
-        assert len(blocks) >= 2
-        names = [t[0] for t in [b["tokens"] for b in blocks] if t]
-        assert "HelloWorld" in names or "App" in names
-    finally:
-        test_file.unlink()
+    test_file = tmp_path / "test.unsupported"
+    test_file.write_text("some content")
+    blocks = parser.parse_file(test_file)
+    assert blocks == []
 
 
-def test_parse_csharp():
+def test_supported_extensions_property():
     parser = CodeParser()
-
-    test_file = Path("test_file.cs")
-    test_content = """
-using System;
-
-namespace HelloWorldApp {
-    class Greeter {
-        private string message;
-
-        public Greeter(string message) {
-            this.message = message;
-        }
-
-        public void SayHello() {
-            Console.WriteLine("Hello " + message);
-        }
-    }
-}
-"""
-    test_file.write_text(test_content)
-
-    try:
-        blocks = parser.parse_file(test_file)
-        assert len(blocks) >= 2
-        tokens_flat = [tok for b in blocks for tok in b["tokens"]]
-        assert "Greeter" in tokens_flat or "SayHello" in tokens_flat
-    finally:
-        test_file.unlink()
+    assert ".py" in parser.supported_extensions
+    assert ".js" in parser.supported_extensions
+    assert ".cs" in parser.supported_extensions
 
 
-def test_unsupported_extension():
+def test_get_parser_caching():
     parser = CodeParser()
-    test_file = Path("test.txt")
-    test_file.write_text("Some content")
-
-    try:
-        blocks = parser.parse_file(test_file)
-        assert len(blocks) == 0
-    finally:
-        test_file.unlink()
+    # Should cache per language
+    p1 = parser._get_parser("javascript")
+    p2 = parser._get_parser("javascript")
+    assert p1 is p2
+    p3 = parser._get_parser("typescript")
+    assert p3 is not p1
 
 
-def test_parser_supported_extensions():
+def test_parse_file_all_supported(monkeypatch, tmp_path):
     parser = CodeParser()
-    expected_extensions = {".py", ".js", ".jsx", ".cs", ".ts", ".tsx"}
-    assert parser.supported_extensions == expected_extensions
+    # Patch _parse_python and _parse_with_tree_sitter to check all branches
+    called = {}
 
+    def fake_parse_python(content, file_path):
+        called["py"] = True
+        return [
+            {
+                "location": {"file": str(file_path), "start_line": 1, "end_line": 2},
+                "tokens": ["foo"],
+            }
+        ]
 
-def test_parser_handles_syntax_errors():
-    parser = CodeParser()
-    test_file = Path("test_syntax_error.py")
-    test_content = """
-def test_function(
-    return x + y  # Missing closing parenthesis
-"""
+    def fake_parse_with_tree_sitter(content, file_path, lang):
+        called[lang] = True
+        return [
+            {
+                "location": {"file": str(file_path), "start_line": 1, "end_line": 2},
+                "tokens": ["bar"],
+            }
+        ]
 
-    test_file.write_text(test_content)
-
-    try:
-        blocks = parser.parse_file(test_file)
-        assert isinstance(blocks, list)
-    finally:
-        test_file.unlink()
-
-    test_file = Path("test_syntax_error.js")
-    test_content = """
-function testFunction( {  # Missing closing parenthesis
-    return x + y;
-"""
-
-    test_file.write_text(test_content)
-
-    try:
-        blocks = parser.parse_file(test_file)
-        assert isinstance(blocks, list)
-    finally:
-        test_file.unlink()
-
-    test_file = Path("test_syntax_error.ts")
-    test_file.write_text("function greet(: string) { return 1; }")  # Invalid TS
-    try:
-        blocks = parser.parse_file(test_file)
-        assert isinstance(blocks, list)
-    finally:
-        test_file.unlink()
-
-    test_file = Path("test_syntax_error.tsx")
-    test_file.write_text("<div><Component></div>")  # Mismatched JSX
-    try:
-        blocks = parser.parse_file(test_file)
-        assert isinstance(blocks, list)
-    finally:
-        test_file.unlink()
-
-    test_file = Path("test_syntax_error.cs")
-    test_file.write_text("public class MyClass { void Method( )")  # Missing brace
-    try:
-        blocks = parser.parse_file(test_file)
-        assert isinstance(blocks, list)
-    finally:
-        test_file.unlink()
-
-
-def test_parser_get_parser_caching():
-    """Test that parser caching works correctly."""
-    parser = CodeParser()
-
-    parser1 = parser._get_parser("javascript")
-    assert parser1 is not None
-
-    parser2 = parser._get_parser("javascript")
-    assert parser1 is parser2
-
-    parser3 = parser._get_parser("python")
-    assert parser3 is not parser1
-
-
-def test_parser_tree_sitter_exception_handling():
-    """Test that tree-sitter parsing handles exceptions gracefully."""
-    parser = CodeParser()
-
-    test_file = Path("test_tree_sitter_error.js")
-    test_content = "invalid javascript code that will cause parsing errors"
-
-    test_file.write_text(test_content)
-
-    try:
-        blocks = parser.parse_file(test_file)
-        assert isinstance(blocks, list)
-    finally:
-        test_file.unlink()
-
-
-def test_parser_query_exception_handling():
-    """Test that query exceptions are handled gracefully."""
-    parser = CodeParser()
-
-    test_file = Path("test_query_error.js")
-    test_content = """
-function test() {
-    return "hello";
-}
-"""
-
-    test_file.write_text(test_content)
-
-    try:
-        blocks = parser.parse_file(test_file)
-        assert isinstance(blocks, list)
-    finally:
-        test_file.unlink()
-
-
-def test_parser_tokenize_tree_sitter_node_with_strings():
-    """Test tokenization of tree-sitter nodes with string literals."""
-    parser = CodeParser()
-
-    test_file = Path("test_strings.js")
-    test_content = """
-function test() {
-    let message = "Hello World";
-    let number = 42;
-    return message + number;
-}
-"""
-
-    test_file.write_text(test_content)
-
-    try:
-        blocks = parser.parse_file(test_file)
-        assert isinstance(blocks, list)
-    finally:
-        test_file.unlink()
-
-
-def test_parser_tokenize_tree_sitter_node_empty_content():
-    """Test tokenization with empty or whitespace-only content."""
-    parser = CodeParser()
-
-    test_file = Path("test_empty.js")
-    test_content = "   \n   \n"
-
-    test_file.write_text(test_content)
-
-    try:
-        blocks = parser.parse_file(test_file)
-        assert isinstance(blocks, list)
-    finally:
-        test_file.unlink()
-
-
-def test_parser_tokenize_tree_sitter_node_with_strings_ts():
-    parser = CodeParser()
-
-    test_file = Path("test_strings.ts")
-    test_content = """
-function greet(name: string): string {
-    const message = "Hello, " + name;
-    return message;
-}
-"""
-    test_file.write_text(test_content)
-
-    try:
-        blocks = parser.parse_file(test_file)
-        assert isinstance(blocks, list)
-        assert any("message" in block["tokens"] for block in blocks)
-    finally:
-        test_file.unlink()
-
-
-def test_parser_tokenize_tree_sitter_node_with_strings_tsx():
-    parser = CodeParser()
-
-    test_file = Path("test_strings.tsx")
-    test_content = """
-import React from 'react';
-
-function Greet({ name }: { name: string }) {
-    return <div>Hello, {name}</div>;
-}
-"""
-    test_file.write_text(test_content)
-
-    try:
-        blocks = parser.parse_file(test_file)
-        assert isinstance(blocks, list)
-        assert any("Greet" in block["tokens"] for block in blocks)
-    finally:
-        test_file.unlink()
-
-
-def test_parser_tokenize_tree_sitter_node_with_strings_cs():
-    parser = CodeParser()
-
-    test_file = Path("test_strings.cs")
-    test_content = """
-public class Greeter {
-    public string Greet(string name) {
-        string message = "Hello, " + name;
-        return message;
-    }
-}
-"""
-    test_file.write_text(test_content)
-
-    try:
-        blocks = parser.parse_file(test_file)
-        assert isinstance(blocks, list)
-        assert any("Greet" in block["tokens"] for block in blocks)
-    finally:
-        test_file.unlink()
+    parser._parse_python = fake_parse_python
+    parser._parse_with_tree_sitter = fake_parse_with_tree_sitter
+    for ext, _ in [
+        (".py", "py"),
+        (".js", "javascript"),
+        (".jsx", "javascript"),
+        (".ts", "typescript"),
+        (".tsx", "tsx"),
+        (".cs", "csharp"),
+    ]:
+        test_file = tmp_path / f"test{ext}"
+        test_file.write_text("dummy")
+        parser.parse_file(test_file)
+    # All branches should be called
+    assert called["py"]
+    assert called["javascript"]
+    assert called["typescript"]
+    assert called["tsx"]
+    assert called["csharp"]

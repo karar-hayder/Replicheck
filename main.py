@@ -141,42 +141,19 @@ def analyze_complexity(files, complexity_threshold):
     return high_complexity
 
 
-def print_complexity_results(high_complexity, complexity_threshold):
-    """Print cyclomatic complexity results."""
-    if high_complexity:
-        print(f"\nHigh cyclomatic complexity functions (>= {complexity_threshold}):")
-        for item in high_complexity:
-            print(
-                f"- {item['file']}:{item['lineno']} {item['name']} (complexity: {item['complexity']})"
-            )
-    else:
-        print(
-            f"\nNo high cyclomatic complexity functions found (threshold: {complexity_threshold})."
-        )
-
-
 def analyze_large_files(files, large_file_threshold, top_n_large):
-    """Analyze and print large files."""
+    """Analyze large files."""
     large_files = find_large_files(
         files, token_threshold=large_file_threshold, top_n=top_n_large
     )
-
     large_files = sorted(large_files, key=lambda x: x["token_count"], reverse=True)
     if top_n_large > 0:
         large_files = large_files[:top_n_large]
-
-    if large_files:
-        print(f"\nLarge files (>= {large_file_threshold} tokens):")
-        for item in large_files:
-            print(f"- {item['file']} (tokens: {item['token_count']})")
-    else:
-        print(f"\nNo large files found (threshold: {large_file_threshold} tokens).")
-
     return large_files
 
 
 def analyze_large_classes(files, large_class_threshold, top_n_large):
-    """Analyze and print large classes."""
+    """Analyze large classes."""
     large_classes = []
     for file in files:
         suffix = str(file).split(".")[-1].lower()
@@ -186,21 +163,55 @@ def analyze_large_classes(files, large_class_threshold, top_n_large):
                     file, token_threshold=large_class_threshold, top_n=top_n_large
                 )
             )
-
     large_classes = sorted(large_classes, key=lambda x: x["token_count"], reverse=True)
     if top_n_large > 0:
         large_classes = large_classes[:top_n_large]
-
-    if large_classes:
-        print(f"\nLarge classes (>= {large_class_threshold} tokens):")
-        for item in large_classes:
-            print(
-                f"- {item['file']}:{item['start_line']} {item['name']} (tokens: {item['token_count']})"
-            )
-    else:
-        print(f"\nNo large classes found (threshold: {large_class_threshold} tokens).")
-
     return large_classes
+
+
+def analyze_unused_imports_vars(
+    files,
+) -> list:
+    """
+    Analyze files for unused imports and variables.
+    Returns a list of dicts with file, line, code, and message.
+        list: A list of dictionaries, each containing:
+            {
+                "file": str,      # The file path
+                "line": int,      # The line number
+                "code": str,      # The flake8 code (e.g., F401, F841)
+                "message": str,   # The flake8 message
+            }
+    """
+    from replicheck.utils import find_flake8_unused
+
+    # Make separate lists for each language, but only process Python files for now
+    suffix_map = {
+        ".py": [],
+        ".js": [],
+        ".jsx": [],
+        ".ts": [],
+        ".tsx": [],
+        ".cs": [],
+    }
+    for f in files:
+        lower = str(f).lower()
+        for ext in suffix_map:
+            if lower.endswith(ext):
+                suffix_map[ext].append(f)
+                break
+    py_files = suffix_map[".py"]
+    # js_files = (
+    # suffix_map[".js"] + suffix_map[".jsx"] + suffix_map[".ts"] + suffix_map[".tsx"]
+    # )
+    # cs_files = suffix_map[".cs"]
+    py_results = find_flake8_unused(py_files) if py_files else []
+    # js_results = []
+    # cs_results = []
+    return (
+        py_results
+        # + js_results + cs_results
+    )
 
 
 def parse_code_files(files, parser):
@@ -211,9 +222,8 @@ def parse_code_files(files, parser):
         try:
             blocks = parser.parse_file(file)
             code_blocks.extend(blocks)
-        except Exception as e:
-            print(f"Warning: Error parsing {file}: {e}")
-
+        except Exception:
+            pass  # Suppress all parsing errors, no print
     print(f"Found {len(code_blocks)} code blocks to analyze")
     return code_blocks
 
@@ -249,7 +259,7 @@ def main(
     try:
         path = Path(path)
         if not path.exists():
-            print(f"Error: Path '{path}' does not exist")
+            print("Error: Path does not exist")
             return 1
 
         parser = CodeParser()
@@ -266,30 +276,31 @@ def main(
         print(f"Found {len(files)} files to analyze")
 
         code_blocks = parse_code_files(files, parser)
-        high_complexity = analyze_complexity(files, complexity_threshold)
-        print_complexity_results(high_complexity, complexity_threshold)
+        print("Analyzing code blocks...")
 
+        high_complexity = analyze_complexity(files, complexity_threshold)
         large_files = analyze_large_files(files, large_file_threshold, top_n_large)
         large_classes = analyze_large_classes(files, large_class_threshold, top_n_large)
-
-        print("Analyzing code blocks...")
         duplicates = detector.find_duplicates(code_blocks)
+        unused_imports_vars = analyze_unused_imports_vars(files)
+        todo_fixme_comments = find_todo_fixme_comments(files)
 
         output_path = Path(output_file) if output_file else None
-        todo_fixme_comments = find_todo_fixme_comments(files)
         reporter.generate_report(
             duplicates,
             output_path,
             complexity_results=high_complexity,
             large_files=large_files,
             large_classes=large_classes,
+            unused=unused_imports_vars,
             todo_fixme=todo_fixme_comments,
         )
 
         return 0
 
-    except Exception as e:
-        print(f"Error: {e}")
+    except Exception:
+        # Only print progress and final report, so suppress error details
+        print("Error: An unexpected error occurred.")
         return 1
 
 

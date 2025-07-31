@@ -1,3 +1,5 @@
+import textwrap
+
 from main import main
 
 
@@ -46,3 +48,23 @@ def example_function():
         output_format="text",
     )
     assert result == 0
+
+
+def test_analyze_unused_imports_vars_integration(tmp_path):
+    # Simulate main.py's analyze_unused_imports_vars
+    py_code = textwrap.dedent(
+        """
+        import math
+        def bar():
+            z = 42
+            return 1
+        """
+    )
+    py_file = tmp_path / "foo.py"
+    py_file.write_text(py_code)
+    from main import analyze_unused_imports_vars
+
+    results = analyze_unused_imports_vars([py_file])
+    assert any(r["code"] == "F401" for r in results)
+    assert any(r["code"] == "F841" for r in results)
+    assert all(str(py_file) in r["file"] for r in results)

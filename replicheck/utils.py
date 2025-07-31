@@ -11,7 +11,10 @@ def calculate_similarity(tokens1: List[str], tokens2: List[str]) -> float:
     """
     Calculate similarity between two token lists using Jaccard similarity.
     Much faster than SequenceMatcher for code comparison.
+    Should handle non-list input gracefully (should not raise).
     """
+    if not isinstance(tokens1, list) or not isinstance(tokens2, list):
+        return 0.0
     set1 = set(tokens1)
     set2 = set(tokens2)
     intersection = len(set1 & set2)
@@ -19,15 +22,21 @@ def calculate_similarity(tokens1: List[str], tokens2: List[str]) -> float:
     return intersection / union if union else 0.0
 
 
-def get_file_hash(file_path: Path) -> str:
+def get_file_hash(file_path: Path) -> Optional[str]:
     """
     Calculate SHA-256 hash of a file.
+    Returns None if the file does not exist or cannot be read.
     """
+    if not file_path.exists():
+        return None
     sha256 = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            sha256.update(chunk)
-    return sha256.hexdigest()
+    try:
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                sha256.update(chunk)
+        return sha256.hexdigest()
+    except Exception:
+        return None
 
 
 def _get_ignored_dirs(ignore_dirs: Optional[List[str]] = None) -> set:
@@ -66,7 +75,9 @@ def compute_severity(value, threshold):
     Compute severity level and emoji based on how much value exceeds threshold.
     Returns a string like 'Low 🟢', 'Medium 🟡', 'High 🟠', 'Critical 🔴'.
     """
-    if threshold == 0:
+    if not (isinstance(value, (int, float)) and isinstance(threshold, (int, float))):
+        return "None"
+    if threshold == 0 or value < 0 or threshold < 0:
         return "None"
     ratio = value / threshold
     if ratio >= 3:
@@ -330,7 +341,6 @@ def find_large_files(files, token_threshold=500, top_n=None):
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
-                print(content)
                 token_count = _token_count_cs(content, file_path, parser)
             except Exception:
                 token_count = 0
@@ -549,3 +559,55 @@ def find_todo_fixme_comments(files):
         except Exception:
             pass
     return results
+
+
+def find_flake8_unused(paths, ignore_dirs=None):
+    """
+    Run flake8 on the given list of paths and return a list of unused imports and variables.
+
+    Args:
+        paths (list[str or Path]): List of files to analyze.
+        ignore_dirs (list[str], optional): Directories to ignore.
+
+    Returns:
+        List[dict]: Each dict contains file, line, code, and message for each unused import/var.
+    """
+    import re
+    import subprocess
+    import sys
+
+    if not paths:
+        return []
+
+    cmd = [sys.executable, "-m", "flake8", "--select=F401,F841"]
+    if ignore_dirs:
+        for d in ignore_dirs:
+            cmd.append(f"--exclude={d}")
+    cmd.extend([str(p) for p in paths])
+
+    try:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+            check=False,
+        )
+    except Exception:
+        return []
+
+    unused = []
+    # flake8 output: path:line:col: code message
+    pattern = re.compile(r"^(.*?):(\d+):\d+:\s+(F401|F841)\s+(.*)$")
+    for line in result.stdout.splitlines():
+        m = pattern.match(line)
+        if m:
+            unused.append(
+                {
+                    "file": m.group(1),
+                    "line": int(m.group(2)),
+                    "code": m.group(3),
+                    "message": m.group(4).strip(),
+                }
+            )
+    return unused
