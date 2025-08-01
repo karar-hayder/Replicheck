@@ -542,7 +542,7 @@ class Reporter:
             todo_fixme,
             duplicates,
         ):
-            md.append(f"- {line}")
+            md.append(f"{line}")
         md.append("")
         self._markdown_section_complexity(complexity_results, md)
         self._markdown_section_large_files(large_files, md)

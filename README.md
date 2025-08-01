@@ -7,8 +7,9 @@ A Python tool for detecting code duplications and code quality issues in your pr
 - Detect high cyclomatic complexity functions (Python, JavaScript/JSX, Typescript/TSX, C#)
 - Detect large files and large classes by token count (Python, JavaScript/JSX, Typescript/TSX, C#)
 - Detect duplicate code blocks (Python, JavaScript/JSX, Typescript/TSX, C#)
-- Support for Python, JavaScript, JSX, Typescript, TSX and C# files
+- Detect Unused imports and vars (Python)
 - Find TODO/FIXME comments across your codebase
+- Support for Python, JavaScript, JSX, Typescript, TSX and C# files
 - Configurable similarity threshold and minimum block size
 - Ignores virtual environments and user-specified directories
 - Detailed reporting in text, JSON, or Markdown format
@@ -59,12 +60,13 @@ python main.py --path ./src --min-similarity 0.85 --min-size 30 --output-format 
 Every report starts with a summary, e.g.:
 
 ```text
-Summary:
-- 2 high complexity functions (1 Critical 🔴)
-- 3 large files (1 Critical 🔴)
-- 1 large classes (1 High 🟠)
-- 4 TODO/FIXME comments
-- 1 duplicate code blocks
+## Summary
+- 14 high complexity functions (0 Critical 🔴)
+- 9 large files (7 Critical 🔴)
+- 1 large classes (0 High 🟠)
+- 0 unused imports/variables ✅
+- 12 TODO/FIXME comments
+- 0 duplicate code blocks ✅
 ```
 
 ### Markdown Output Example
@@ -76,20 +78,30 @@ Summary:
 - 2 high complexity functions (1 Critical 🔴)
 - 3 large files (1 Critical 🔴)
 - 1 large classes (1 High 🟠)
+- 2 unused imports/variables
 - 4 TODO/FIXME comments
 - 1 duplicate code blocks
 
 ## High Cyclomatic Complexity Functions
-- [src/foo.py:12](src/foo.py#L12) foo (complexity: 15) [Critical 🔴]
+- [src/example.py:42](src/example.py#L42) process_data (complexity: 18) [Critical 🔴]
+- [src/utils.py:10](src/utils.py#L10) calculate (complexity: 12) [Medium 🟡]
 
 ## Large Files
-- [src/big.py](src/big.py) (tokens: 900) [Critical 🔴]
+- [src/huge_module.py](src/huge_module.py) (tokens: 2100) [Critical 🔴]
+- [src/medium_module.py](src/medium_module.py) (tokens: 800) [High 🟠]
 
 ## Large Classes
-- [src/big.py:10](src/big.py#L10) BigClass (tokens: 400) [High 🟠]
+- [src/huge_module.py:5](src/huge_module.py#L5) BigProcessor (tokens: 700) [Critical 🔴]
+- [src/medium_module.py:20](src/medium_module.py#L20) MediumProcessor (tokens: 350) [High 🟠]
+
+## Unused Imports and Vars
+- [main.py:204](main.py#L204) [F841] local variable 'js_files' is assigned to but never used
+- [main.py:207](main.py#L207) [F841] local variable 'cs_files' is assigned to but never used
+
 
 ## TODO/FIXME Comments
-- [src/foo.py:20](src/foo.py#L20) [TODO] Refactor this
+- [src/example.py:99](src/example.py#L99) [TODO] Add error handling
+- [src/utils.py:25](src/utils.py#L25) [FIXME] This is a hack, refactor later
 
 ## Code Duplications
 - Clone #1: size=50 tokens, count=2 (cross-file)
@@ -107,12 +119,6 @@ To run tests:
 
 ```bash
 pytest --cov --cov-report=html
-```
-
-To check code style:
-
-```bash
-black .
 ```
 
 ### JavaScript/JSX Support
@@ -156,9 +162,9 @@ You can use [pre-commit](https://pre-commit.com/) to automatically format and li
    pre-commit install
    ```
 
-3. Now, every time you commit, `black` and `pytest` will run automatically.
+3. Now, every time you commit, the hooks defined in `.pre-commit-config.yaml` will run automatically.
 
-If you want to run the hooks manually on all files:
+If you want to run the hooks manually on all files (RECOMMENDED Before Commit):
 
 ```bash
 pre-commit run --all-files
