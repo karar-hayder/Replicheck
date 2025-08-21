@@ -16,7 +16,7 @@ repos:
         language: python
         types: [python]
         pass_filenames: false
-        always_run: true
+        files: ^.*\.py$
 
       - id: black-isort
         name: black + isort (local)
@@ -29,6 +29,7 @@ repos:
         pass_filenames: false
         always_run: true
         types: [python]
+
       - id: flake8
         name: flake8
         entry: >
@@ -38,4 +39,4 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
-        always_run: true
+        files: ^.*\.py$
