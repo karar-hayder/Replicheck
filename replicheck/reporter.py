@@ -62,6 +62,7 @@ class Reporter:
         unused,
         todo_fixme,
         duplicates,
+        bns_results=None,
     ):
         summary = []
         # Complexity
@@ -112,6 +113,14 @@ class Reporter:
             if n_dupes
             else "- 0 duplicate code blocks ✅"
         )
+        # BNS.py section
+        if bns_results is not None:
+            n_bns = len(bns_results)
+            summary.append(
+                f"- {n_bns} Bugs and Safety Issues."
+                if n_bns
+                else "- 0 Bugs and Safety Issues. ✅"
+            )
         return summary
 
     # --- Section Generators for Text Report ---
@@ -326,6 +335,26 @@ class Reporter:
             )
             file_output.append("No code duplications found!")
 
+    def _text_section_bns(self, bns_results, console_output, file_output):
+        if bns_results is not None:
+            if bns_results:
+                console_output.append(
+                    self._text_section_header("Bugs and Safety Issues:", Fore.MAGENTA)
+                )
+                file_output.append("Bugs and Safety Issues:")
+                for item in bns_results:
+                    # You can customize the line format as needed
+                    line = f"- {item.get('file', 'Unknown')}:{item.get('line', '?')} {item.get('message', '')}"
+                    console_output.append(line)
+                    file_output.append(line)
+            else:
+                console_output.append(
+                    self._text_section_header("No issues in @BNS.py found.", Fore.GREEN)
+                )
+                file_output.append("No Bugs and Safety Issues found.")
+            console_output.append("")
+            file_output.append("")
+
     def _generate_text_report(
         self,
         duplicates: List[Dict[str, Any]],
@@ -335,6 +364,7 @@ class Reporter:
         large_classes: List[Dict[str, Any]] = None,
         unused: List[Dict[str, Any]] = None,
         todo_fixme: List[Dict[str, Any]] = None,
+        bns_results: List[Dict[str, Any]] = None,
     ):
         """Generate a human-readable text report."""
         console_output = []
@@ -354,6 +384,7 @@ class Reporter:
             unused,
             todo_fixme,
             duplicates,
+            bns_results,
         )
         console_output.append(self._text_section_header("Summary:", Fore.YELLOW))
         file_output.append("Summary:")
@@ -370,6 +401,7 @@ class Reporter:
         self._text_section_unused(unused, console_output, file_output)
         self._text_section_todo_fixme(todo_fixme, console_output, file_output)
         self._text_section_duplicates(duplicates, console_output, file_output)
+        self._text_section_bns(bns_results, console_output, file_output)
 
         # Output
         if output_file:
@@ -403,6 +435,7 @@ class Reporter:
         large_classes: List[Dict[str, Any]] = None,
         unused: List[Dict[str, Any]] = None,
         todo_fixme: List[Dict[str, Any]] = None,
+        bns_results: List[Dict[str, Any]] = None,
     ):
         """Generate a JSON report."""
         is_group_format = bool(
@@ -428,6 +461,7 @@ class Reporter:
             "top_n_large": large_files[0].get("top_n", "N/A") if large_files else None,
             "unused": unused or [],
             "todo_fixme_comments": todo_fixme or [],
+            "bugs_n_safety.py": bns_results or [],
         }
         json_str = json.dumps(report, indent=2)
         if output_file:
@@ -519,6 +553,17 @@ class Reporter:
         else:
             md.append("No code duplications found!")
 
+    def _markdown_section_bns(self, bns_results, md):
+        if bns_results is not None:
+            md.append("\n## @BNS.py Issues")
+            if bns_results:
+                for item in bns_results:
+                    md.append(
+                        f"- {self._format_path(item.get('file', '@BNS.py'), item.get('line', None), 'markdown')} {item.get('message', '')}"
+                    )
+            else:
+                md.append("No issues in @BNS.py found.")
+
     def _generate_markdown_report(
         self,
         duplicates: List[Dict[str, Any]],
@@ -528,6 +573,7 @@ class Reporter:
         large_classes: List[Dict[str, Any]] = None,
         unused: List[Dict[str, Any]] = None,
         todo_fixme: List[Dict[str, Any]] = None,
+        bns_results: List[Dict[str, Any]] = None,
     ):
         """Generate a Markdown report."""
         md = []
@@ -541,6 +587,7 @@ class Reporter:
             unused,
             todo_fixme,
             duplicates,
+            bns_results,
         ):
             md.append(f"{line}")
         md.append("")
@@ -550,6 +597,7 @@ class Reporter:
         self._markdown_section_unused(unused, md)
         self._markdown_section_todo_fixme(todo_fixme, md)
         self._markdown_section_duplicates(duplicates, md)
+        self._markdown_section_bns(bns_results, md)
         md_str = "\n".join(md)
         if output_file:
             output_file.write_text(md_str, encoding="utf-8")
@@ -567,6 +615,7 @@ class Reporter:
         large_classes: List[Dict[str, Any]] = None,
         unused: List[Dict[str, Any]] = None,
         todo_fixme: List[Dict[str, Any]] = None,
+        bns_results: List[Dict[str, Any]] = None,
     ):
         """
         Generate a report of code duplications.
@@ -579,6 +628,8 @@ class Reporter:
             large_classes: List of large classes (optional)
             unused: List of unused imports and vars (optional)
             todo_fixme: List of TODO/FIXME comments (optional)
+            bns_results: List of Bugs and Seafety issues  (optional)
+
         """
         try:
             if self.output_format == "json":
@@ -590,6 +641,7 @@ class Reporter:
                     large_classes,
                     unused,
                     todo_fixme,
+                    bns_results,
                 )
             elif self.output_format == "markdown":
                 self._generate_markdown_report(
@@ -600,6 +652,7 @@ class Reporter:
                     large_classes,
                     unused,
                     todo_fixme,
+                    bns_results,
                 )
             else:
                 self._generate_text_report(
@@ -610,6 +663,7 @@ class Reporter:
                     large_classes,
                     unused,
                     todo_fixme,
+                    bns_results,
                 )
 
             if output_file:

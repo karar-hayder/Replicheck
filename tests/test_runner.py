@@ -1,0 +1,384 @@
+import pytest
+
+from main import main
+from replicheck.runner import ReplicheckRunner
+from replicheck.utils import (
+    analyze_cs_cyclomatic_complexity,
+    analyze_cyclomatic_complexity,
+    analyze_js_cyclomatic_complexity,
+    calculate_similarity,
+    compute_severity,
+    find_files,
+    find_flake8_unused,
+    find_large_classes,
+    find_large_files,
+    find_todo_fixme_comments,
+    get_file_hash,
+)
+
+
+def create_py_file(tmp_path, name, content):
+    file_path = tmp_path / name
+    file_path.write_text(content)
+    return file_path
+
+
+def test_runner_with_invalid_path(tmp_path):
+    runner = ReplicheckRunner(
+        path=tmp_path / "does_not_exist",
+        min_similarity=0.8,
+        min_size=10,
+        output_format="text",
+        complexity_threshold=10,
+        large_file_threshold=500,
+        large_class_threshold=300,
+        top_n_large=10,
+        extensions=None,
+        ignore_dirs=[],
+        output_file=None,
+    )
+    assert runner.run() == 1
+
+
+def test_runner_with_empty_dir(tmp_path):
+    runner = ReplicheckRunner(
+        path=tmp_path,
+        min_similarity=0.8,
+        min_size=10,
+        output_format="text",
+        complexity_threshold=10,
+        large_file_threshold=500,
+        large_class_threshold=300,
+        top_n_large=10,
+        extensions=None,
+        ignore_dirs=[],
+        output_file=None,
+    )
+    assert runner.run() == 0
+
+
+def test_runner_detects_duplicate(tmp_path):
+    code = "def foo():\n    return 42\n"
+    create_py_file(tmp_path, "a.py", code)
+    create_py_file(tmp_path, "b.py", code)
+    runner = ReplicheckRunner(
+        path=tmp_path,
+        min_similarity=0.8,
+        min_size=5,
+        output_format="text",
+        complexity_threshold=10,
+        large_file_threshold=500,
+        large_class_threshold=300,
+        top_n_large=10,
+        extensions=None,
+        ignore_dirs=[],
+        output_file=None,
+    )
+    assert runner.run() == 0
+
+
+def test_utils_calculate_similarity():
+    assert calculate_similarity(["a", "b", "c"], ["a", "b", "d"]) == 2 / 4
+    assert calculate_similarity([], []) == 0.0
+    assert calculate_similarity("abc", ["a", "b"]) == 0.0
+
+
+def test_utils_get_file_hash(tmp_path):
+    file = create_py_file(tmp_path, "hashme.py", "print(1)")
+    h = get_file_hash(file)
+    assert isinstance(h, str) and len(h) == 64
+    assert get_file_hash(tmp_path / "nope.py") is None
+
+
+def test_utils_find_files(tmp_path):
+    py = create_py_file(tmp_path, "x.py", "print(1)")
+    js = create_py_file(tmp_path, "y.js", "console.log(1);")
+    files = find_files(tmp_path, extensions={".py", ".js"})
+    assert py in files and js in files
+
+
+def test_utils_compute_severity():
+    assert compute_severity(30, 10).startswith("Critical")
+    assert compute_severity(20, 10).startswith("High")
+    assert compute_severity(15, 10).startswith("Medium")
+    assert compute_severity(10, 10).startswith("Low")
+    assert compute_severity(5, 10) == "None"
+    assert compute_severity("bad", 10) == "None"
+
+
+def test_utils_analyze_cyclomatic_complexity(tmp_path):
+    code = "def foo():\n    if True:\n        return 1\n    else:\n        return 2\n"
+    file = create_py_file(tmp_path, "cc.py", code)
+    results = analyze_cyclomatic_complexity(file, threshold=1)
+    assert any(r["complexity"] >= 1 for r in results)
+
+
+def test_utils_analyze_js_cyclomatic_complexity(tmp_path):
+    js_code = "function foo() { if (true) { return 1; } else { return 2; } }"
+    file = create_py_file(tmp_path, "cc.js", js_code)
+    # This may require Node.js and helper script to be present
+    results = analyze_js_cyclomatic_complexity(file, threshold=1)
+    assert isinstance(results, list)
+
+
+def test_utils_analyze_cs_cyclomatic_complexity(tmp_path):
+    cs_code = (
+        "public class X { public int Foo() { if (true) return 1; else return 2; } }"
+    )
+    file = create_py_file(tmp_path, "cc.cs", cs_code)
+    # This may require the C# analyzer to be present
+    results = analyze_cs_cyclomatic_complexity(file, threshold=1)
+    assert isinstance(results, list)
+
+
+def test_utils_find_large_files(tmp_path):
+    code = "a = 1\n" * 600
+    file = create_py_file(tmp_path, "big.py", code)
+    results = find_large_files([file], token_threshold=500)
+    assert results and results[0]["file"].endswith("big.py")
+
+
+def test_utils_find_large_classes(tmp_path):
+    code = "class Big:\n" + "\n".join(f"    a{i} = {i}" for i in range(400))
+    file = create_py_file(tmp_path, "bigclass.py", code)
+    results = find_large_classes(file, token_threshold=300)
+    assert results and results[0]["name"] == "Big"
+
+
+def test_utils_find_todo_fixme_comments(tmp_path):
+    code = "# TODO: fix this\n# FIXME something else"
+    file = create_py_file(tmp_path, "todo.py", code)
+    results = find_todo_fixme_comments([file])
+    assert any(r["type"] == "TODO" for r in results)
+    assert any(r["type"] == "FIXME" for r in results)
+
+
+def test_utils_find_flake8_unused(tmp_path):
+    code = "import os\n"
+    file = create_py_file(tmp_path, "unused.py", code)
+    results = find_flake8_unused([file])
+    assert isinstance(results, list)
+
+
+def test_main_function(tmp_path):
+    code = "def foo():\n    return 1\n"
+    create_py_file(tmp_path, "main.py", code)
+    result = main(
+        path=str(tmp_path),
+        min_similarity=0.8,
+        min_size=5,
+        output_format="text",
+        complexity_threshold=10,
+        large_file_threshold=500,
+        large_class_threshold=300,
+        top_n_large=10,
+        extensions=None,
+        ignore_dirs=[],
+        output_file=None,
+    )
+    assert result == 0
+
+
+# ---- Additional tests for runner.py coverage ----
+
+
+def test_runner_extensions_and_ignore_dirs(tmp_path):
+    # Test extensions argument and ignore_dirs filtering
+    create_py_file(tmp_path, "x.py", "print(1)")
+    create_py_file(tmp_path, "y.js", "console.log(1);")
+    subdir = tmp_path / "ignoreme"
+    subdir.mkdir()
+    create_py_file(subdir, "z.py", "print(2)")
+    runner = ReplicheckRunner(
+        path=tmp_path,
+        min_similarity=0.8,
+        min_size=5,
+        output_format="text",
+        complexity_threshold=10,
+        large_file_threshold=500,
+        large_class_threshold=300,
+        top_n_large=10,
+        extensions=["py", "js"],
+        ignore_dirs=[str(subdir)],
+        output_file=None,
+    )
+    # Should not error, and should not include ignored file
+    assert runner.run() == 0
+
+
+def test_runner_parse_code_files_handles_exception(tmp_path, monkeypatch):
+    # Simulate parser.parse_file raising
+    class DummyParser:
+        def parse_file(self, file):
+            raise ValueError("fail")
+
+    runner = ReplicheckRunner(
+        path=tmp_path,
+        min_similarity=0.8,
+        min_size=5,
+        output_format="text",
+        complexity_threshold=10,
+        large_file_threshold=500,
+        large_class_threshold=300,
+        top_n_large=10,
+        extensions=None,
+        ignore_dirs=[],
+        output_file=None,
+    )
+    # Should not raise, should print and return empty
+    assert runner.parse_code_files([tmp_path / "nofile.py"], DummyParser()) == []
+
+
+def test_runner_analyze_unused_imports_vars_filters(tmp_path):
+    py = create_py_file(tmp_path, "x.py", "import os\n")
+    js = create_py_file(tmp_path, "x.js", "console.log(1);")
+    runner = ReplicheckRunner(
+        path=tmp_path,
+        min_similarity=0.8,
+        min_size=5,
+        output_format="text",
+        complexity_threshold=10,
+        large_file_threshold=500,
+        large_class_threshold=300,
+        top_n_large=10,
+        extensions=None,
+        ignore_dirs=[],
+        output_file=None,
+    )
+    # Should only analyze .py for unused imports/vars
+    results = runner.analyze_unused_imports_vars([py, js])
+    assert isinstance(results, list)
+
+
+def test_runner_analyze_bugs_and_safety_none(monkeypatch, tmp_path):
+    # Simulate BugNSafetyAnalyzer is None
+    import replicheck.runner as runner_mod
+
+    monkeypatch.setattr(runner_mod, "BugNSafetyAnalyzer", None)
+    runner = ReplicheckRunner(
+        path=tmp_path,
+        min_similarity=0.8,
+        min_size=5,
+        output_format="text",
+        complexity_threshold=10,
+        large_file_threshold=500,
+        large_class_threshold=300,
+        top_n_large=10,
+        extensions=None,
+        ignore_dirs=[],
+        output_file=None,
+    )
+    assert runner.analyze_bugs_and_safety([tmp_path / "x.py"]) == []
+
+
+def test_runner_analyze_bugs_and_safety_available(tmp_path):
+    # Simulate BugNSafetyAnalyzer present and returns dummy results
+    class DummyBNS:
+        def __init__(self, files, ignore_dirs=None):
+            self.files = files
+            self.ignore_dirs = ignore_dirs
+            self.results = []
+
+        def analyze(self):
+            self.results = [
+                {"file": str(self.files[0]), "code": "B999", "message": "dummy"}
+            ]
+
+    import replicheck.runner as runner_mod
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(runner_mod, "BugNSafetyAnalyzer", DummyBNS)
+    runner = runner_mod.ReplicheckRunner(
+        path=tmp_path,
+        min_similarity=0.8,
+        min_size=5,
+        output_format="text",
+        complexity_threshold=10,
+        large_file_threshold=500,
+        large_class_threshold=300,
+        top_n_large=10,
+        extensions=None,
+        ignore_dirs=[],
+        output_file=None,
+    )
+    file = create_py_file(tmp_path, "bns.py", "def foo(x=[]): pass\n")
+    results = runner.analyze_bugs_and_safety([file])
+    assert results and results[0]["code"] == "B999"
+    monkeypatch.undo()
+
+
+def test_runner_large_files_and_classes_top_n(tmp_path):
+    # Test top_n_large truncation
+    files = []
+    for i in range(5):
+        code = "a = 1\n" * (600 + i)
+        files.append(create_py_file(tmp_path, f"big{i}.py", code))
+    runner = ReplicheckRunner(
+        path=tmp_path,
+        min_similarity=0.8,
+        min_size=5,
+        output_format="text",
+        complexity_threshold=10,
+        large_file_threshold=500,
+        large_class_threshold=300,
+        top_n_large=2,
+        extensions=None,
+        ignore_dirs=[],
+        output_file=None,
+    )
+    large_files = runner.analyze_large_files(files)
+    assert len(large_files) == 2
+    # For classes
+    class_code = "class Big:\n" + "\n".join(f"    a{i} = {i}" for i in range(400))
+    class_files = [
+        create_py_file(tmp_path, f"bigclass{i}.py", class_code) for i in range(5)
+    ]
+    large_classes = runner.analyze_large_classes(class_files)
+    assert len(large_classes) == 2
+
+
+def test_runner_analyze_complexity_all_types(tmp_path):
+    py = create_py_file(
+        tmp_path, "x.py", "def foo():\n    if True:\n        return 1\n"
+    )
+    js = create_py_file(tmp_path, "x.js", "function foo() { if (true) { return 1; } }")
+    cs = create_py_file(
+        tmp_path, "x.cs", "public class X { public int Foo() { if (true) return 1; } }"
+    )
+    runner = ReplicheckRunner(
+        path=tmp_path,
+        min_similarity=0.8,
+        min_size=5,
+        output_format="text",
+        complexity_threshold=1,
+        large_file_threshold=500,
+        large_class_threshold=300,
+        top_n_large=10,
+        extensions=None,
+        ignore_dirs=[],
+        output_file=None,
+    )
+    results = runner.analyze_complexity([py, js, cs])
+    assert any(r["threshold"] == 1 for r in results)
+
+
+def test_runner_run_catches_exception(tmp_path, monkeypatch):
+    # Simulate an exception in run
+    runner = ReplicheckRunner(
+        path=tmp_path,
+        min_similarity=0.8,
+        min_size=5,
+        output_format="text",
+        complexity_threshold=1,
+        large_file_threshold=500,
+        large_class_threshold=300,
+        top_n_large=10,
+        extensions=None,
+        ignore_dirs=[],
+        output_file=None,
+    )
+    monkeypatch.setattr(
+        "replicheck.runner.CodeParser",
+        lambda *a, **k: (_ for _ in ()).throw(Exception("fail")),
+    )
+    assert runner.run() == 1
