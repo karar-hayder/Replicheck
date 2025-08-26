@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from replicheck.detector import DuplicateDetector
 from replicheck.parser import CodeParser
 from replicheck.reporter import Reporter
+from replicheck.tools.Duplication.Duplication import DuplicateDetector
 from replicheck.utils import (
     analyze_cs_cyclomatic_complexity,
     analyze_cyclomatic_complexity,

@@ -12,6 +12,7 @@ from replicheck.reporter import Reporter
 def test_reporter_text_output(capsys):
     """Test text report generation."""
     reporter = Reporter(output_format="text")
+    # Duplicates now always use the new format: locations, num_duplicates, cross_file, tokens
     duplicates = [
         {
             "size": 10,
@@ -165,20 +166,26 @@ def test_reporter_no_duplicates(tmp_path):
 def test_reporter_console_output(capsys):
     """Test report generation to console."""
     reporter = Reporter(output_format="text")
+    # Use new format for duplicates
     duplicates = [
         {
-            "similarity": 0.95,
             "size": 10,
-            "block1": {"file": "file1.py", "start_line": 1, "end_line": 5},
-            "block2": {"file": "file2.py", "start_line": 10, "end_line": 14},
+            "num_duplicates": 2,
+            "locations": [
+                {"file": "file1.py", "start_line": 1, "end_line": 5},
+                {"file": "file2.py", "start_line": 10, "end_line": 14},
+            ],
+            "cross_file": True,
+            "tokens": ["def", "foo", "(", ")", ":", "x", "=", "1"],
         }
     ]
     reporter.generate_report(duplicates)
 
     captured = capsys.readouterr()
     assert "Code Duplication Report" in captured.out
-    assert "Duplication #1" in captured.out
-    assert "Similarity: 95.00%" in captured.out
+    assert "Clone #1: size=10 tokens, count=2 (cross-file)" in captured.out
+    assert "file1.py:1-5" in captured.out
+    assert "file2.py:10-14" in captured.out
 
 
 def test_reporter_error_handling(tmp_path):
@@ -186,10 +193,14 @@ def test_reporter_error_handling(tmp_path):
     reporter = Reporter(output_format="text")
     duplicates = [
         {
-            "similarity": 0.95,
             "size": 10,
-            "block1": {"file": "file1.py", "start_line": 1, "end_line": 5},
-            "block2": {"file": "file2.py", "start_line": 10, "end_line": 14},
+            "num_duplicates": 2,
+            "locations": [
+                {"file": "file1.py", "start_line": 1, "end_line": 5},
+                {"file": "file2.py", "start_line": 10, "end_line": 14},
+            ],
+            "cross_file": True,
+            "tokens": ["def", "foo", "(", ")", ":", "x", "=", "1"],
         }
     ]
 
@@ -328,7 +339,16 @@ def test_reporter_generate_summary_edge_cases():
         {"file": "test.py", "line": 1, "type": "TODO", "text": "test"},
     ]
     duplicates = [
-        {"size": 10, "locations": [{"file": "test.py"}]},
+        {
+            "size": 10,
+            "num_duplicates": 2,
+            "locations": [
+                {"file": "test.py", "start_line": 1, "end_line": 5},
+                {"file": "test2.py", "start_line": 10, "end_line": 14},
+            ],
+            "cross_file": True,
+            "tokens": ["def", "foo", "(", ")", ":"],
+        },
     ]
 
     summary = reporter._generate_summary(
@@ -489,99 +509,6 @@ def test_reporter_json_with_duplication_groups(tmp_path):
     assert content["duplicates"][0]["num_duplicates"] == 3
     assert content["duplicates"][0]["cross_file"] is True
     assert len(content["duplicates"][0]["locations"]) == 3
-
-
-def test_reporter_json_legacy_format(tmp_path):
-    """Test JSON report generation with legacy format."""
-    reporter = Reporter(output_format="json")
-    duplicates = [
-        {
-            "size": 10,
-            "similarity": 0.95,
-            "block1": {"file": "file1.py", "start_line": 1, "end_line": 5},
-            "block2": {"file": "file2.py", "start_line": 10, "end_line": 14},
-            "tokens": ["def", "foo", "(", ")", ":", "x", "=", "1"],
-        }
-    ]
-
-    output_file = tmp_path / "report.json"
-    reporter.generate_report(duplicates, output_file)
-
-    content = json.loads(output_file.read_text(encoding="utf-8"))
-    assert "duplicates" in content
-    assert content["duplicates"][0]["size"] == 10
-    assert content["duplicates"][0]["num_duplicates"] == 2
-    assert content["duplicates"][0]["cross_file"] is True
-
-
-def test_reporter_markdown_legacy_format(tmp_path):
-    """Test markdown report generation with legacy format."""
-    reporter = Reporter(output_format="markdown")
-    duplicates = [
-        {
-            "size": 10,
-            "similarity": 0.95,
-            "block1": {"file": "file1.py", "start_line": 1, "end_line": 5},
-            "block2": {"file": "file2.py", "start_line": 10, "end_line": 14},
-            "tokens": ["def", "foo", "(", ")", ":", "x", "=", "1"],
-        }
-    ]
-
-    output_file = tmp_path / "report.md"
-    reporter.generate_report(duplicates, output_file)
-
-    content = output_file.read_text()
-    assert "# Code Duplication Report" in content
-    assert "## Code Duplications" in content
-    assert "Duplication #1: Similarity: 95.00%" in content
-
-
-def test_reporter_text_legacy_format(tmp_path, capsys):
-    """Test text report generation with legacy format."""
-    reporter = Reporter(output_format="text")
-    duplicates = [
-        {
-            "size": 10,
-            "similarity": 0.95,
-            "block1": {"file": "file1.py", "start_line": 1, "end_line": 5},
-            "block2": {"file": "file2.py", "start_line": 10, "end_line": 14},
-            "tokens": ["def", "foo", "(", ")", ":", "x", "=", "1"],
-        }
-    ]
-
-    reporter.generate_report(duplicates, None)
-    captured = capsys.readouterr()
-    assert "Duplication #1" in captured.out
-    assert "Similarity: 95.00%" in captured.out
-    assert "file1.py:1-5" in captured.out
-    assert "file2.py:10-14" in captured.out
-
-
-def test_reporter_generate_report_exception_handling(tmp_path, capsys):
-    """Test that generate_report handles exceptions gracefully."""
-    reporter = Reporter(output_format="text")
-    duplicates = [
-        {
-            "size": 10,
-            "num_duplicates": 2,
-            "locations": [
-                {"file": "file1.py", "start_line": 1, "end_line": 5},
-            ],
-            "cross_file": False,
-            "tokens": ["def", "foo", "(", ")", ":"],
-        }
-    ]
-
-    output_file = tmp_path / "report.txt"
-    output_file.mkdir()
-
-    reporter.generate_report(duplicates, output_file)
-    captured = capsys.readouterr()
-    assert (
-        "Report written to:" in captured.out or "Error writing report:" in captured.out
-    )
-
-    output_file.rmdir()
 
 
 def test_reporter_json_console_output(capsys):

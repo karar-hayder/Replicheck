@@ -280,55 +280,31 @@ class Reporter:
             file_output.append("")
 
     def _text_section_duplicates(self, duplicates, console_output, file_output):
+        """
+        Render the code duplication section in text format.
+        This matches the group format output of DuplicateDetector in Duplication.py.
+        """
         if duplicates:
-            is_group_format = (
-                "num_duplicates" in duplicates[0] and "locations" in duplicates[0]
+            # Always use group format as per Duplication.py
+            console_output.append(
+                self._text_section_header("Code Duplications:", Fore.MAGENTA)
             )
-            if is_group_format:
-                console_output.append(
-                    self._text_section_header("Code Duplications:", Fore.MAGENTA)
-                )
-                file_output.append("Code Duplications:")
-                for i, group in enumerate(duplicates, 1):
-                    cross = " (cross-file)" if group.get("cross_file") else ""
-                    line = f"Clone #{i}: size={group['size']} tokens, count={group['num_duplicates']}{cross}"
-                    console_output.append(line)
-                    file_output.append(line)
-                    for loc in group["locations"]:
-                        loc_line = (
-                            f"    - {loc['file']}:{loc['start_line']}-{loc['end_line']}"
-                        )
-                        console_output.append(loc_line)
-                        file_output.append(loc_line)
-                    snippet = " ".join(group["tokens"][:10]) + (
-                        " ..." if len(group["tokens"]) > 10 else ""
-                    )
-                    console_output.append(f"    Tokens: {snippet}")
-                    file_output.append(f"    Tokens: {snippet}")
-                    console_output.append("")
-                    file_output.append("")
-            else:
-                for i, dup in enumerate(duplicates, 1):
-                    sim = dup.get("similarity", 0)
-                    sim_pct = f"{sim*100:.2f}%" if isinstance(sim, float) else str(sim)
-                    line = f"Duplication #{i}: Similarity: {sim_pct}, size={dup.get('size', '?')} tokens"
-                    console_output.append(line)
-                    file_output.append(line)
-                    for block_key in ("block1", "block2"):
-                        block = dup.get(block_key)
-                        if block:
-                            loc_line = f"    - {block['file']}:{block['start_line']}-{block['end_line']}"
-                            console_output.append(loc_line)
-                            file_output.append(loc_line)
-                    tokens = dup.get("tokens")
-                    if tokens:
-                        snippet = " ".join(tokens[:10]) + (
-                            " ..." if len(tokens) > 10 else ""
-                        )
-                        console_output.append(f"    Tokens: {snippet}")
-                        file_output.append(f"    Tokens: {snippet}")
-                    console_output.append("")
-                    file_output.append("")
+            file_output.append("Code Duplications:")
+            for i, group in enumerate(duplicates, 1):
+                cross = " (cross-file)" if group.get("cross_file") else ""
+                line = f"Clone #{i}: size={group.get('size', '?')} tokens, count={group.get('num_duplicates', '?')}{cross}"
+                console_output.append(line)
+                file_output.append(line)
+                for loc in group.get("locations", []):
+                    loc_line = f"    - {loc.get('file', '?')}:{loc.get('start_line', '?')}-{loc.get('end_line', '?')}"
+                    console_output.append(loc_line)
+                    file_output.append(loc_line)
+                tokens = group.get("tokens", [])
+                snippet = " ".join(tokens[:10]) + (" ..." if len(tokens) > 10 else "")
+                console_output.append(f"    Tokens: {snippet}")
+                file_output.append(f"    Tokens: {snippet}")
+                console_output.append("")
+                file_output.append("")
         else:
             console_output.append(
                 self._text_section_header("No code duplications found!", Fore.GREEN)
@@ -413,21 +389,6 @@ class Reporter:
 
     # --- JSON Report ---
 
-    def _convert_legacy_duplicates_to_group(self, duplicates):
-        new_duplicates = []
-        for dup in duplicates:
-            group = {
-                "size": dup.get("size", 0),
-                "num_duplicates": 2,
-                "locations": [dup.get("block1", {}), dup.get("block2", {})],
-                "cross_file": dup.get("block1", {}).get("file")
-                != dup.get("block2", {}).get("file"),
-                "tokens": dup.get("tokens", []),
-                "similarity": dup.get("similarity"),
-            }
-            new_duplicates.append(group)
-        return new_duplicates
-
     def _generate_json_report(
         self,
         duplicates: List[Dict[str, Any]],
@@ -440,13 +401,6 @@ class Reporter:
         bns_results: List[Dict[str, Any]] = None,
     ):
         """Generate a JSON report."""
-        is_group_format = bool(
-            duplicates
-            and "num_duplicates" in duplicates[0]
-            and "locations" in duplicates[0]
-        )
-        if not is_group_format:
-            duplicates = self._convert_legacy_duplicates_to_group(duplicates)
 
         report = {
             "duplicates": duplicates,
@@ -557,14 +511,14 @@ class Reporter:
 
     def _markdown_section_bns(self, bns_results, md):
         if bns_results is not None:
-            md.append("\n## @BNS.py Issues")
+            md.append("\n## Bugs and Safety Issues")
             if bns_results:
                 for item in bns_results:
                     md.append(
-                        f"- {self._format_path(item.get('file', '@BNS.py'), item.get('line', None), 'markdown')} {item.get('message', '')}"
+                        f"- {self._format_path(item.get('file', 'Bugs and Safety'), item.get('line', None), 'markdown')} {item.get('message', '')}"
                     )
             else:
-                md.append("No issues in @BNS.py found.")
+                md.append("No issues in Bugs and Safety found.")
 
     def _generate_markdown_report(
         self,
