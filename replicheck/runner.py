@@ -141,8 +141,8 @@ class ReplicheckRunner:
 
             output_path = Path(self.output_file) if self.output_file else None
             reporter.generate_report(
-                duplicates,
-                output_path,
+                output_file=output_path,
+                duplicates=duplicates,
                 complexity_results=high_complexity,
                 large_files=large_files,
                 large_classes=large_classes,

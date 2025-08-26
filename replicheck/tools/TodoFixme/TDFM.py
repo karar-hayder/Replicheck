@@ -1,4 +1,5 @@
 # --- TODO/FIXME Comments ---
+from replicheck.parser import get_language, get_parser
 
 
 class TodoFixmeDetector:
@@ -22,8 +23,6 @@ class TodoFixmeDetector:
         self, file_path, content, ext, ts_languages, results
     ):
         import re
-
-        from replicheck.parser import get_language, get_parser
 
         language_name = ts_languages[ext]
         parser = get_parser(language_name)
