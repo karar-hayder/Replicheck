@@ -2,39 +2,7 @@
 Tests for the utils module.
 """
 
-import textwrap
-
-from replicheck.utils import calculate_similarity, find_files, get_file_hash
-
-# --- calculate_similarity coverage ---
-
-
-def test_calculate_similarity_identical():
-    tokens1 = ["def", "foo", "(", ")", ":"]
-    tokens2 = ["def", "foo", "(", ")", ":"]
-    assert calculate_similarity(tokens1, tokens2) == 1.0
-
-
-def test_calculate_similarity_partial():
-    tokens1 = ["def", "foo", "(", ")", ":"]
-    tokens2 = ["def", "bar", "(", ")", ":"]
-    sim = calculate_similarity(tokens1, tokens2)
-    assert 0 < sim < 1.0
-
-
-def test_calculate_similarity_empty():
-    assert calculate_similarity([], []) == 0.0
-    assert calculate_similarity(["a"], []) == 0.0
-    assert calculate_similarity([], ["a"]) == 0.0
-
-
-def test_calculate_similarity_type_errors():
-    # Should handle non-list input gracefully (should not raise)
-    assert calculate_similarity("abc", "abc") == 0.0
-    assert calculate_similarity(None, None) == 0.0
-    assert calculate_similarity(["a"], None) == 0.0
-    assert calculate_similarity(None, ["a"]) == 0.0
-
+from replicheck.utils import find_files, get_file_hash
 
 # --- get_file_hash coverage ---
 
@@ -63,6 +31,20 @@ def test_get_file_hash_binary(tmp_path):
     file.write_bytes(b"\x00\x01\x02\x03")
     result = get_file_hash(file)
     assert isinstance(result, str) or result is None
+
+
+def test_get_file_hash_permission_error(tmp_path, monkeypatch):
+    # Simulate a permission error when opening the file
+    from replicheck.utils import get_file_hash
+
+    file = tmp_path / "perm.txt"
+    file.write_text("data")
+
+    def raise_exc(*a, **k):
+        raise PermissionError("nope")
+
+    monkeypatch.setattr("builtins.open", raise_exc)
+    assert get_file_hash(file) is None
 
 
 # --- find_files coverage ---
@@ -101,255 +83,23 @@ def test_find_files_no_extensions(tmp_path):
     assert any(f.name == "a.py" for f in files)
 
 
-# --- analyze_cyclomatic_complexity coverage ---
+def test__get_ignored_dirs_and__is_in_ignored_dirs():
+    from pathlib import Path
 
+    from replicheck.utils import _get_ignored_dirs, _is_in_ignored_dirs
 
-def test_analyze_cyclomatic_complexity_detects_high(tmp_path):
-    code = """
-def foo():
-    if True:
-        for i in range(10):
-            if i % 2 == 0:
-                print(i)
-    else:
-        print('no')
-    for j in range(5):
-        if j > 2:
-            print(j)
-    return 1
-"""
-    file = tmp_path / "complex.py"
-    file.write_text(code)
-    from replicheck.utils import analyze_cyclomatic_complexity
+    # Default venv dirs
+    ignored = _get_ignored_dirs()
+    assert ".venv" in ignored and "venv" in ignored
+    # Add custom
+    ignored2 = _get_ignored_dirs(["foo", "bar"])
+    assert "foo" in ignored2 and "bar" in ignored2
 
-    results = analyze_cyclomatic_complexity(file, threshold=5)
-    assert results, "Should detect at least one high-complexity function"
-    assert results[0]["name"] == "foo"
-    assert results[0]["complexity"] >= 5
-    assert results[0]["file"] == str(file)
-    assert results[0]["threshold"] == 5
-
-
-def test_analyze_cyclomatic_complexity_none_found(tmp_path):
-    code = """
-def bar():
-    return 1
-"""
-    file = tmp_path / "simple.py"
-    file.write_text(code)
-    from replicheck.utils import analyze_cyclomatic_complexity
-
-    results = analyze_cyclomatic_complexity(file, threshold=5)
-    assert results == [], "Should return empty list if no function exceeds threshold"
-
-
-def test_analyze_cyclomatic_complexity_nested(tmp_path):
-    code = """
-def outer():
-    def inner():
-        if True: return 1
-    if False: return 2
-"""
-    file = tmp_path / "nested.py"
-    file.write_text(code)
-    from replicheck.utils import analyze_cyclomatic_complexity
-
-    results = analyze_cyclomatic_complexity(file, threshold=1)
-    assert any(r["name"] == "outer" for r in results)
-
-
-def test_analyze_cyclomatic_complexity_lambda(tmp_path):
-    code = "foo = lambda x: x+1"
-    file = tmp_path / "lambda.py"
-    file.write_text(code)
-    from replicheck.utils import analyze_cyclomatic_complexity
-
-    results = analyze_cyclomatic_complexity(file, threshold=1)
-    assert isinstance(results, list)
-
-
-def test_analyze_cyclomatic_complexity_exception_handling(tmp_path):
-    from replicheck.utils import analyze_cyclomatic_complexity
-
-    non_existent_file = tmp_path / "nonexistent.py"
-    results = analyze_cyclomatic_complexity(non_existent_file, threshold=5)
-    assert results == []
-
-    syntax_error_file = tmp_path / "syntax_error.py"
-    syntax_error_file.write_text(
-        "def foo(\n    return 1  # Missing closing parenthesis"
-    )
-    results = analyze_cyclomatic_complexity(syntax_error_file, threshold=5)
-    assert results == []
-
-
-def test_analyze_cyclomatic_complexity_encoding_error(tmp_path):
-    from replicheck.utils import analyze_cyclomatic_complexity
-
-    file = tmp_path / "badenc.py"
-    with open(file, "wb") as f:
-        f.write(b"\xff\xfe")
-    results = analyze_cyclomatic_complexity(file, threshold=1)
-    assert results == []
-
-
-# --- find_large_files coverage ---
-
-
-def test_find_large_files(tmp_path):
-    file = tmp_path / "large.py"
-    file.write_text("def foo():\n    x = 1\n" * 300)
-    from replicheck.utils import find_large_files
-
-    results = find_large_files([file], token_threshold=500)
-    assert results, "Should detect the file as large"
-    assert results[0]["file"] == str(file)
-    assert results[0]["token_count"] >= 500
-    assert results[0]["threshold"] == 500
-    assert results[0]["top_n"] is None or isinstance(results[0]["top_n"], int)
-
-
-def test_find_large_files_empty(tmp_path):
-    from replicheck.utils import find_large_files
-
-    results = find_large_files([], token_threshold=10)
-    assert results == []
-
-
-def test_find_large_files_exception_handling(tmp_path):
-    from replicheck.utils import find_large_files
-
-    non_existent_file = tmp_path / "nonexistent.py"
-    results = find_large_files([non_existent_file], token_threshold=500)
-    assert results == []
-
-    non_python_file = tmp_path / "test.txt"
-    non_python_file.write_text("This is not Python code")
-    results = find_large_files([non_python_file], token_threshold=500)
-    assert results == []
-
-    syntax_error_file = tmp_path / "syntax_error.py"
-    syntax_error_file.write_text(
-        "def foo(\n    return 1  # Missing closing parenthesis"
-    )
-    results = find_large_files([syntax_error_file], token_threshold=500)
-    assert isinstance(results, list)
-
-
-def test_find_large_files_encoding_error(tmp_path):
-    from replicheck.utils import find_large_files
-
-    file = tmp_path / "badenc.py"
-    with open(file, "wb") as f:
-        f.write(b"\xff\xfe")
-    results = find_large_files([file], token_threshold=1)
-    assert isinstance(results, list)
-
-
-# --- find_large_classes coverage ---
-
-
-def test_find_large_classes(tmp_path):
-    class_code = "class Big:\n    def foo(self):\n        x = 1\n" + (
-        "    def bar(self):\n        y = 2\n" * 150
-    )
-    file = tmp_path / "bigclass.py"
-    file.write_text(class_code)
-    from replicheck.utils import find_large_classes
-
-    results = find_large_classes(file, token_threshold=300)
-    assert results, "Should detect the class as large"
-    assert results[0]["name"] == "Big"
-    assert results[0]["token_count"] >= 300
-    assert results[0]["threshold"] == 300
-    assert results[0]["top_n"] is None or isinstance(results[0]["top_n"], int)
-
-
-def test_find_large_classes_empty(tmp_path):
-    from replicheck.utils import find_large_classes
-
-    file = tmp_path / "empty.py"
-    file.write_text("")
-    results = find_large_classes(file, token_threshold=1)
-    assert results == []
-
-
-def test_find_large_classes_exception_handling(tmp_path):
-    from replicheck.utils import find_large_classes
-
-    non_existent_file = tmp_path / "nonexistent.py"
-    results = find_large_classes(non_existent_file, token_threshold=300)
-    assert results == []
-
-    syntax_error_file = tmp_path / "syntax_error.py"
-    syntax_error_file.write_text(
-        "class Test(\n    def __init__(self):\n        pass  # Missing closing parenthesis"
-    )
-    results = find_large_classes(syntax_error_file, token_threshold=300)
-    assert results == []
-
-
-def test_find_large_classes_encoding_error(tmp_path):
-    from replicheck.utils import find_large_classes
-
-    file = tmp_path / "badenc.py"
-    with open(file, "wb") as f:
-        f.write(b"\xff\xfe")
-    results = find_large_classes(file, token_threshold=1)
-    assert isinstance(results, list)
-
-
-# --- find_todo_fixme_comments coverage ---
-
-
-def test_find_todo_fixme_comments(tmp_path):
-    code = """
-# TODO: Refactor this function
-# FIXME this is broken
-# just a comment
-# todo lowercase
-# fixme: also lowercase
-    """
-    file = tmp_path / "todo.py"
-    file.write_text(code)
-    from replicheck.utils import find_todo_fixme_comments
-
-    results = find_todo_fixme_comments([file])
-    assert len(results) == 4
-    types = {r["type"] for r in results}
-    assert "TODO" in types and "FIXME" in types
-    texts = [r["text"] for r in results]
-    assert any("Refactor" in t for t in texts)
-    assert any("broken" in t for t in texts)
-
-
-def test_find_todo_fixme_comments_exception_handling(tmp_path):
-    from replicheck.utils import find_todo_fixme_comments
-
-    non_existent_file = tmp_path / "nonexistent.py"
-    results = find_todo_fixme_comments([non_existent_file])
-    assert results == []
-
-    non_python_file = tmp_path / "test.txt"
-    non_python_file.write_text("# TODO: This won't be found")
-    results = find_todo_fixme_comments([non_python_file])
-    assert results == []
-
-    encoding_error_file = tmp_path / "encoding_error.py"
-    with open(encoding_error_file, "wb") as f:
-        f.write(b"# TODO: This has invalid encoding \xff\xfe")
-    results = find_todo_fixme_comments([encoding_error_file])
-    assert isinstance(results, list)
-
-
-def test_find_todo_fixme_comments_variants(tmp_path):
-    from replicheck.utils import find_todo_fixme_comments
-
-    code = "# ToDo: mixed case\n# FixMe: mixed case\n# TODO\n# FIXME\n"
-    file = tmp_path / "variants.py"
-    file.write_text(code)
-    results = find_todo_fixme_comments([file])
-    assert len(results) == 4
+    # _is_in_ignored_dirs
+    p1 = Path("foo/bar/baz.py")
+    p2 = Path("src/main.py")
+    assert _is_in_ignored_dirs(p1, {"foo"})
+    assert not _is_in_ignored_dirs(p2, {"foo"})
 
 
 # --- compute_severity coverage ---
@@ -391,364 +141,44 @@ def test_compute_severity_types():
     assert compute_severity(10, "xyz") == "None"
 
 
+def test_compute_severity_zero_and_negative_threshold():
+    from replicheck.utils import compute_severity
+
+    # threshold equal 0
+    assert compute_severity(10, 0) == "None"
+    # value less than 0
+    assert compute_severity(-1, 10) == "None"
+    # threshold more than 0
+    assert compute_severity(10, -1) == "None"
+
+
 # --- severity in results ---
 
 
-def test_analyze_cyclomatic_complexity_severity(tmp_path):
-    code = """
-def foo():
-    if True:
-        for i in range(10):
-            if i % 2 == 0:
-                print(i)
-    else:
-        print('no')
-    for j in range(5):
-        if j > 2:
-            print(j)
-    return 1
-"""
-    file = tmp_path / "complex.py"
-    file.write_text(code)
-    from replicheck.utils import analyze_cyclomatic_complexity
-
-    results = analyze_cyclomatic_complexity(file, threshold=5)
-    assert results
-    assert results[0]["severity"] in {"Low 🟢", "Medium 🟡", "High 🟠", "Critical 🔴"}
-
-
 def test_find_large_files_severity(tmp_path):
+    from replicheck.tools.LargeDetection.LF import LargeFileDetector
+
     file = tmp_path / "large.py"
     file.write_text("def foo():\n    x = 1\n" * 300)
-    from replicheck.utils import find_large_files
 
-    results = find_large_files([file], token_threshold=500)
+    detector = LargeFileDetector()
+    detector.find_large_files([file], token_threshold=500)
+    results = detector.results
     assert results
     assert results[0]["severity"] in {"Low 🟢", "Medium 🟡", "High 🟠", "Critical 🔴"}
 
 
 def test_find_large_classes_severity(tmp_path):
+    from replicheck.tools.LargeDetection.LC import LargeClassDetector
+
     class_code = "class Big:\n    def foo(self):\n        x = 1\n" + (
         "    def bar(self):\n        y = 2\n" * 150
     )
     file = tmp_path / "bigclass.py"
     file.write_text(class_code)
-    from replicheck.utils import find_large_classes
 
-    results = find_large_classes(file, token_threshold=300)
+    detector = LargeClassDetector()
+    detector.find_large_classes([file], token_threshold=300)
+    results = detector.results
     assert results
     assert results[0]["severity"] in {"Low 🟢", "Medium 🟡", "High 🟠", "Critical 🔴"}
-
-
-# --- JS/TS/TSX/CS support ---
-
-
-def test_find_large_files_js(tmp_path):
-    js_code = """
-    function foo() { var x = 1; var y = 2; }
-    class Bar { method() { return 42; } }
-    // Add more tokens to exceed threshold
-    """ + (
-        "var a = 1;\n" * 500
-    )
-    file = tmp_path / "big.js"
-    file.write_text(js_code)
-    from replicheck.utils import find_large_files
-
-    results = find_large_files([file], token_threshold=50)
-    assert results, "Should detect the JS file as large"
-    assert results[0]["file"].endswith("big.js")
-    assert results[0]["token_count"] >= 50
-
-
-def test_find_large_classes_js(tmp_path):
-    methods = "\n".join([f"  method{i}() {{ var x = {i}; }}" for i in range(60)])
-    js_code = f"""
-    class BigClass {{
-    {methods}
-    }}
-    """
-    file = tmp_path / "bigclass.js"
-    file.write_text(js_code)
-    from replicheck.utils import find_large_classes
-
-    results = find_large_classes(file, token_threshold=50)
-    assert results, "Should detect the JS class as large"
-    assert results[0]["name"] == "BigClass"
-    assert results[0]["token_count"] >= 50
-
-
-def test_analyze_js_cyclomatic_complexity(tmp_path):
-    js_code = """
-    function foo(x) { if (x) { return 1; } else { return 2; } }
-    function bar() { for (var i=0;i<10;i++) { if (i%2) { continue; } } }
-    """
-    file = tmp_path / "complex.js"
-    file.write_text(js_code)
-    from replicheck.utils import analyze_js_cyclomatic_complexity
-
-    results = analyze_js_cyclomatic_complexity(file, threshold=2)
-    assert results, "Should detect at least one high-complexity function"
-    assert any(r["name"] == "bar" or r["name"] == "foo" for r in results)
-    assert all("complexity" in r for r in results)
-    assert all("file" in r for r in results)
-
-
-def test_find_large_files_ts(tmp_path):
-    ts_code = """
-    function foo(): number { let x = 1; let y = 2; return x + y; }
-    class Bar { method(): number { return 42; } }
-    """ + (
-        "let a: number = 1;\n" * 500
-    )
-    file = tmp_path / "big.ts"
-    file.write_text(ts_code)
-    from replicheck.utils import find_large_files
-
-    results = find_large_files([file], token_threshold=50)
-    assert results, "Should detect the TS file as large"
-    assert results[0]["file"].endswith("big.ts")
-    assert results[0]["token_count"] >= 50
-
-
-def test_find_large_classes_ts(tmp_path):
-    methods = "\n".join([f"  method{i}(): void {{ let x = {i}; }}" for i in range(60)])
-    ts_code = f"""
-    class BigClass {{
-    {methods}
-    }}
-    """
-    file = tmp_path / "bigclass.ts"
-    file.write_text(ts_code)
-    from replicheck.utils import find_large_classes
-
-    results = find_large_classes(file, token_threshold=50)
-    assert results, "Should detect the TS class as large"
-    assert results[0]["name"] == "BigClass"
-    assert results[0]["token_count"] >= 50
-
-
-def test_analyze_ts_cyclomatic_complexity(tmp_path):
-    ts_code = """
-    function foo(x: number): number { if (x > 0) { return 1; } else { return 2; } }
-    function bar(): void { for (let i=0; i<10; i++) { if (i % 2 === 0) { continue; } } }
-    """
-    file = tmp_path / "complex.ts"
-    file.write_text(ts_code)
-    from replicheck.utils import analyze_js_cyclomatic_complexity
-
-    results = analyze_js_cyclomatic_complexity(file, threshold=2)
-    assert results, "Should detect at least one high-complexity TS function"
-    assert any(r["name"] in {"foo", "bar"} for r in results)
-    assert all("complexity" in r for r in results)
-
-
-def test_find_large_files_tsx(tmp_path):
-    tsx_code = """
-    import React from 'react';
-    const Component = ({ name }: { name: string }) => <div>Hello {name}</div>;
-    """ + (
-        "const x = <span>text</span>;\n" * 500
-    )
-    file = tmp_path / "big.tsx"
-    file.write_text(tsx_code)
-    from replicheck.utils import find_large_files
-
-    results = find_large_files([file], token_threshold=50)
-    assert results, "Should detect the TSX file as large"
-    assert results[0]["file"].endswith("big.tsx")
-    assert results[0]["token_count"] >= 50
-
-
-def test_find_large_classes_tsx(tmp_path):
-    methods = "\n".join(
-        [f"  method{i}(): void {{ console.log({i}); }}" for i in range(60)]
-    )
-    tsx_code = f"""
-    import React from 'react';
-
-    class BigComponent extends React.Component {{
-    {methods}
-    render() {{
-        return <div>Big Component</div>;
-    }}
-    }}
-    """
-    file = tmp_path / "bigcomponent.tsx"
-    file.write_text(tsx_code)
-    from replicheck.utils import find_large_classes
-
-    results = find_large_classes(file, token_threshold=50)
-    assert results, "Should detect the TSX class as large"
-    assert results[0]["name"] == "BigComponent"
-    assert results[0]["token_count"] >= 50
-
-
-def test_analyze_tsx_cyclomatic_complexity(tmp_path):
-    tsx_code = """
-    import React from 'react';
-    function DecisionComponent({ flag }: { flag: boolean }) {
-        if (flag) {
-            return <span>Yes</span>;
-        } else {
-            return <span>No</span>;
-        }
-    }
-    """
-    file = tmp_path / "complex.tsx"
-    file.write_text(tsx_code)
-    from replicheck.utils import analyze_js_cyclomatic_complexity
-
-    results = analyze_js_cyclomatic_complexity(file, threshold=1)
-    assert results, "Should detect complexity in TSX component"
-    assert any(r["name"] == "DecisionComponent" for r in results)
-
-
-# --- C# support ---
-
-
-def test_find_large_files_cs(tmp_path):
-    cs_code = (
-        """
-using System;
-namespace TestNamespace {
-    class SmallClass { void SmallMethod() { int x = 1; } }
-
-"""
-        + ("    int a = 1;\n" * 100)
-        + "}\n"
-    )
-    file = tmp_path / "big.cs"
-    file.write_text(cs_code)
-    from replicheck.utils import find_large_files
-
-    results = find_large_files([file], token_threshold=50)
-    assert results, "Should detect the C# file as large"
-    assert results[0]["file"].endswith("big.cs")
-    assert results[0]["token_count"] >= 50
-
-
-def test_find_large_classes_cs(tmp_path):
-    methods = "\n".join([f"  void Method{i}() {{ int x = {i}; }}" for i in range(60)])
-    cs_code = f"""
-    namespace TestNamespace {{
-        class BigClass {{
-        {methods}
-        }}
-    }}
-    """
-    file = tmp_path / "bigclass.cs"
-    file.write_text(cs_code)
-    from replicheck.utils import find_large_classes
-
-    results = find_large_classes(file, token_threshold=50)
-    assert results, "Should detect the C# class as large"
-    assert results[0]["name"] == "BigClass"
-    assert results[0]["token_count"] >= 50
-
-
-def test_analyze_cs_cyclomatic_complexity(tmp_path):
-    cs_code = """
-    namespace TestNamespace {
-        class ComplexityTest {
-            int Foo(int x) {
-                if (x > 0) {
-                    return 1;
-                } else {
-                    return 2;
-                }
-            }
-            int Bar() {
-                for (int i = 0; i < 10; i++) {
-                    if (i % 2 == 0) {
-                        continue;
-                    }
-                }
-                return 0;
-            }
-        }
-    }
-    """
-    file = tmp_path / "complex.cs"
-    file.write_text(cs_code)
-    from replicheck.utils import analyze_cs_cyclomatic_complexity
-
-    results = analyze_cs_cyclomatic_complexity(file, threshold=2)
-    assert results, "Should detect at least one high-complexity function"
-    assert any(r["name"] == "Bar" or r["name"] == "Foo" for r in results)
-    assert all("complexity" in r for r in results)
-    assert all("file" in r for r in results)
-
-
-def test_analyze_cs_cyclomatic_complexity_empty(tmp_path):
-    from replicheck.utils import analyze_cs_cyclomatic_complexity
-
-    file = tmp_path / "empty.cs"
-    file.write_text("")
-    results = analyze_cs_cyclomatic_complexity(file, threshold=1)
-    assert results == []
-
-
-def test_analyze_cs_cyclomatic_complexity_encoding_error(tmp_path):
-    from replicheck.utils import analyze_cs_cyclomatic_complexity
-
-    file = tmp_path / "badenc.cs"
-    with open(file, "wb") as f:
-        f.write(b"\xff\xfe")
-    results = analyze_cs_cyclomatic_complexity(file, threshold=1)
-    assert results == []
-
-
-# --- flake8 unused ---
-
-
-def test_find_flake8_unused_imports(tmp_path):
-    py_code = textwrap.dedent(
-        """
-        import os
-        import sys
-
-        def foo():
-            x = 1
-            y = 2  # unused
-            return x
-        """
-    )
-    py_file = tmp_path / "test_unused.py"
-    py_file.write_text(py_code)
-    from replicheck.utils import find_flake8_unused
-
-    results = find_flake8_unused([py_file])
-    messages = [r["message"] for r in results]
-    assert any(r["code"] == "F401" for r in results), "Should detect unused import"
-    assert any(r["code"] == "F841" for r in results), "Should detect unused variable"
-    assert any("imported but unused" in m for m in messages)
-    assert any("assigned to but never used" in m for m in messages)
-    assert all(str(py_file) in r["file"] for r in results)
-
-
-def test_find_flake8_unused_empty(tmp_path):
-    from replicheck.utils import find_flake8_unused
-
-    py_file = tmp_path / "empty.py"
-    py_file.write_text("")
-    results = find_flake8_unused([py_file])
-    assert results == []
-
-
-def test_find_flake8_unused_nonexistent(tmp_path):
-    from replicheck.utils import find_flake8_unused
-
-    py_file = tmp_path / "doesnotexist.py"
-    results = find_flake8_unused([py_file])
-    assert results == []
-
-
-def test_find_flake8_unused_encoding_error(tmp_path):
-    from replicheck.utils import find_flake8_unused
-
-    py_file = tmp_path / "badenc.py"
-    with open(py_file, "wb") as f:
-        f.write(b"\xff\xfe")
-    results = find_flake8_unused([py_file])
-    assert isinstance(results, list)

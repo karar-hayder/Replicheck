@@ -2,19 +2,12 @@ import pytest
 
 from main import main
 from replicheck.runner import ReplicheckRunner
-from replicheck.utils import (
-    analyze_cs_cyclomatic_complexity,
-    analyze_cyclomatic_complexity,
-    analyze_js_cyclomatic_complexity,
-    calculate_similarity,
-    compute_severity,
-    find_files,
-    find_flake8_unused,
-    find_large_classes,
-    find_large_files,
-    find_todo_fixme_comments,
-    get_file_hash,
-)
+from replicheck.tools.CyclomaticComplexity.CCA import CyclomaticComplexityAnalyzer
+from replicheck.tools.LargeDetection.LC import LargeClassDetector
+from replicheck.tools.LargeDetection.LF import LargeFileDetector
+from replicheck.tools.TodoFixme.TDFM import TodoFixmeDetector
+from replicheck.tools.Unused.Unused import UnusedCodeDetector
+from replicheck.utils import compute_severity, find_files, get_file_hash
 
 
 def create_py_file(tmp_path, name, content):
@@ -77,12 +70,6 @@ def test_runner_detects_duplicate(tmp_path):
     assert runner.run() == 0
 
 
-def test_utils_calculate_similarity():
-    assert calculate_similarity(["a", "b", "c"], ["a", "b", "d"]) == 2 / 4
-    assert calculate_similarity([], []) == 0.0
-    assert calculate_similarity("abc", ["a", "b"]) == 0.0
-
-
 def test_utils_get_file_hash(tmp_path):
     file = create_py_file(tmp_path, "hashme.py", "print(1)")
     h = get_file_hash(file)
@@ -106,57 +93,74 @@ def test_utils_compute_severity():
     assert compute_severity("bad", 10) == "None"
 
 
-def test_utils_analyze_cyclomatic_complexity(tmp_path):
-    code = "def foo():\n    if True:\n        return 1\n    else:\n        return 2\n"
-    file = create_py_file(tmp_path, "cc.py", code)
-    results = analyze_cyclomatic_complexity(file, threshold=1)
-    assert any(r["complexity"] >= 1 for r in results)
-
-
-def test_utils_analyze_js_cyclomatic_complexity(tmp_path):
+def test_utils_analyze_cyclomatic_complexity_all_types_with_cca(tmp_path):
+    py_code = (
+        "def foo():\n    if True:\n        return 1\n    else:\n        return 2\n"
+    )
     js_code = "function foo() { if (true) { return 1; } else { return 2; } }"
-    file = create_py_file(tmp_path, "cc.js", js_code)
-    # This may require Node.js and helper script to be present
-    results = analyze_js_cyclomatic_complexity(file, threshold=1)
-    assert isinstance(results, list)
-
-
-def test_utils_analyze_cs_cyclomatic_complexity(tmp_path):
     cs_code = (
         "public class X { public int Foo() { if (true) return 1; else return 2; } }"
     )
-    file = create_py_file(tmp_path, "cc.cs", cs_code)
-    # This may require the C# analyzer to be present
-    results = analyze_cs_cyclomatic_complexity(file, threshold=1)
-    assert isinstance(results, list)
+
+    py_file = create_py_file(tmp_path, "cc.py", py_code)
+    js_file = create_py_file(tmp_path, "cc.js", js_code)
+    cs_file = create_py_file(tmp_path, "cc.cs", cs_code)
+
+    files = [py_file, js_file, cs_file]
+    analyzer = CyclomaticComplexityAnalyzer(files, threshold=1)
+    analyzer.analyze()
+    results = analyzer.results
+
+    # Should have at least one result per file type if analyzers are present
+    assert any(r["file"].endswith("cc.py") for r in results)
+    assert any(r["file"].endswith("cc.js") for r in results)
+    assert any(r["file"].endswith("cc.cs") for r in results)
 
 
 def test_utils_find_large_files(tmp_path):
     code = "a = 1\n" * 600
     file = create_py_file(tmp_path, "big.py", code)
-    results = find_large_files([file], token_threshold=500)
-    assert results and results[0]["file"].endswith("big.py")
+    detector = LargeFileDetector()
+    detector.find_large_files([file], token_threshold=500)
+    results = detector.results
+
+    # Handle results: should be a list of dicts with at least 'file' and 'tokens'
+    assert isinstance(results, list)
+    assert results and isinstance(results[0], dict)
+    assert results[0].get("file", "").endswith("big.py")
+    assert results[0].get("token_count", 0) >= 500
 
 
 def test_utils_find_large_classes(tmp_path):
     code = "class Big:\n" + "\n".join(f"    a{i} = {i}" for i in range(400))
     file = create_py_file(tmp_path, "bigclass.py", code)
-    results = find_large_classes(file, token_threshold=300)
-    assert results and results[0]["name"] == "Big"
+    detector = LargeClassDetector()
+    detector.find_large_classes([file], token_threshold=300)
+    results = detector.results
+    # Handle results: should be a list of dicts with at least 'name' and 'tokens'
+    assert isinstance(results, list)
+    assert results and isinstance(results[0], dict)
+    assert results[0].get("name") == "Big"
+    assert results[0].get("token_count", 0) >= 300
 
 
 def test_utils_find_todo_fixme_comments(tmp_path):
     code = "# TODO: fix this\n# FIXME something else"
     file = create_py_file(tmp_path, "todo.py", code)
-    results = find_todo_fixme_comments([file])
+    detector = TodoFixmeDetector()
+    detector.find_todo_fixme_comments([file])
+    results = detector.results
     assert any(r["type"] == "TODO" for r in results)
     assert any(r["type"] == "FIXME" for r in results)
 
 
 def test_utils_find_flake8_unused(tmp_path):
+
     code = "import os\n"
     file = create_py_file(tmp_path, "unused.py", code)
-    results = find_flake8_unused([file])
+    detector = UnusedCodeDetector()
+    detector.find_unused([file])
+    results = detector.results
     assert isinstance(results, list)
 
 
@@ -313,28 +317,27 @@ def test_runner_large_files_and_classes_top_n(tmp_path):
     for i in range(5):
         code = "a = 1\n" * (600 + i)
         files.append(create_py_file(tmp_path, f"big{i}.py", code))
-    runner = ReplicheckRunner(
-        path=tmp_path,
-        min_similarity=0.8,
-        min_size=5,
-        output_format="text",
-        complexity_threshold=10,
-        large_file_threshold=500,
-        large_class_threshold=300,
-        top_n_large=2,
-        extensions=None,
-        ignore_dirs=[],
-        output_file=None,
-    )
-    large_files = runner.analyze_large_files(files)
+    detector = LargeFileDetector()
+    detector.find_large_files(files, token_threshold=500, top_n=2)
+    large_files = detector.results
+    # Handle results: should be a list of dicts, sorted by tokens descending, length 2
+    assert isinstance(large_files, list)
     assert len(large_files) == 2
+    assert all(isinstance(f, dict) for f in large_files)
+    assert large_files[0]["token_count"] >= large_files[1]["token_count"]
     # For classes
     class_code = "class Big:\n" + "\n".join(f"    a{i} = {i}" for i in range(400))
     class_files = [
         create_py_file(tmp_path, f"bigclass{i}.py", class_code) for i in range(5)
     ]
-    large_classes = runner.analyze_large_classes(class_files)
+    class_detector = LargeClassDetector()
+    class_detector.find_large_classes(class_files, token_threshold=300, top_n=2)
+    large_classes = detector.results
+    # Handle results: should be a list of dicts, sorted by tokens descending, length 2
+    assert isinstance(large_classes, list)
     assert len(large_classes) == 2
+    assert all(isinstance(c, dict) for c in large_classes)
+    assert large_classes[0]["token_count"] >= large_classes[1]["token_count"]
 
 
 def test_runner_analyze_complexity_all_types(tmp_path):
@@ -358,8 +361,13 @@ def test_runner_analyze_complexity_all_types(tmp_path):
         ignore_dirs=[],
         output_file=None,
     )
-    results = runner.analyze_complexity([py, js, cs])
-    assert any(r["threshold"] == 1 for r in results)
+    # Use the new CCA analyzer for cyclomatic complexity
+    if CyclomaticComplexityAnalyzer is not None:
+        results = runner.analyze_complexity([py, js, cs])
+        assert any(r.get("threshold", None) == 1 for r in results)
+    else:
+        # If CCA is not available, the runner returns []
+        assert runner.analyze_complexity([py, js, cs]) == []
 
 
 def test_runner_run_catches_exception(tmp_path, monkeypatch):

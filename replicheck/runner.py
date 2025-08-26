@@ -1,24 +1,15 @@
 from pathlib import Path
 
-from replicheck.detector import DuplicateDetector
 from replicheck.parser import CodeParser
 from replicheck.reporter import Reporter
-from replicheck.utils import (
-    analyze_cs_cyclomatic_complexity,
-    analyze_cyclomatic_complexity,
-    analyze_js_cyclomatic_complexity,
-    find_files,
-    find_flake8_unused,
-    find_large_classes,
-    find_large_files,
-    find_todo_fixme_comments,
-)
-
-# --- Bugs and Safety Issues ---
-try:
-    from replicheck.tools.bugNsafety.BNS import BugNSafetyAnalyzer
-except ImportError:
-    BugNSafetyAnalyzer = None
+from replicheck.tools.bugNsafety.BNS import BugNSafetyAnalyzer
+from replicheck.tools.CyclomaticComplexity.CCA import CyclomaticComplexityAnalyzer
+from replicheck.tools.Duplication.Duplication import DuplicateDetector
+from replicheck.tools.LargeDetection.LC import LargeClassDetector
+from replicheck.tools.LargeDetection.LF import LargeFileDetector
+from replicheck.tools.TodoFixme.TDFM import TodoFixmeDetector
+from replicheck.tools.Unused.Unused import UnusedCodeDetector
+from replicheck.utils import find_files
 
 
 class ReplicheckRunner:
@@ -34,76 +25,50 @@ class ReplicheckRunner:
                 setattr(self, k, v)
 
     def analyze_complexity(self, files):
-        high_complexity = []
-        for file in files:
-            suffix = str(file).split(".")[-1].lower()
-            if suffix == "py":
-                for result in analyze_cyclomatic_complexity(
-                    file, threshold=self.complexity_threshold
-                ):
-                    result["threshold"] = self.complexity_threshold
-                    high_complexity.append(result)
-            elif suffix in ["js", "jsx", "ts", "tsx"]:
-                for result in analyze_js_cyclomatic_complexity(
-                    file, threshold=self.complexity_threshold
-                ):
-                    result["threshold"] = self.complexity_threshold
-                    high_complexity.append(result)
-            elif suffix == "cs":
-                for result in analyze_cs_cyclomatic_complexity(
-                    file, threshold=self.complexity_threshold
-                ):
-                    result["threshold"] = self.complexity_threshold
-                    high_complexity.append(result)
-        return high_complexity
+        """
+        Use CyclomaticComplexityAnalyzer from CCA.py to analyze all files.
+        """
+        if CyclomaticComplexityAnalyzer is None:
+            return []
+        analyzer = CyclomaticComplexityAnalyzer(
+            files, threshold=self.complexity_threshold
+        )
+        analyzer.analyze()
+        # Optionally, add threshold to each result for compatibility
+        for result in analyzer.results:
+            result["threshold"] = self.complexity_threshold
+        return analyzer.results
 
-    def analyze_large_files(self, files):
-        large_files = find_large_files(
+    def analyze_large_files(self, files) -> list:
+        detector = LargeFileDetector()
+        detector.find_large_files(
             files, token_threshold=self.large_file_threshold, top_n=self.top_n_large
         )
-        large_files = sorted(large_files, key=lambda x: x["token_count"], reverse=True)
+        large_files = detector.results
         if self.top_n_large > 0:
             large_files = large_files[: self.top_n_large]
         return large_files
 
-    def analyze_large_classes(self, files):
-        large_classes = []
-        for file in files:
-            suffix = str(file).split(".")[-1].lower()
-            if suffix in ["py", "js", "jsx", "cs", "ts", "tsx"]:
-                large_classes.extend(
-                    find_large_classes(
-                        file,
-                        token_threshold=self.large_class_threshold,
-                        top_n=self.top_n_large,
-                    )
-                )
-        large_classes = sorted(
-            large_classes, key=lambda x: x["token_count"], reverse=True
+    def analyze_large_classes(self, files) -> list:
+        detector = LargeClassDetector()
+        detector.find_large_classes(
+            files,
+            token_threshold=self.large_class_threshold,
+            top_n=self.top_n_large,
         )
+        large_classes = detector.results
         if self.top_n_large > 0:
             large_classes = large_classes[: self.top_n_large]
         return large_classes
 
     def analyze_unused_imports_vars(self, files):
-        # Only process Python files for now
-        suffix_map = {
-            ".py": [],
-            ".js": [],
-            ".jsx": [],
-            ".ts": [],
-            ".tsx": [],
-            ".cs": [],
-        }
-        for f in files:
-            lower = str(f).lower()
-            for ext in suffix_map:
-                if lower.endswith(ext):
-                    suffix_map[ext].append(f)
-                    break
-        py_files = suffix_map[".py"]
-        py_results = find_flake8_unused(py_files) if py_files else []
-        return py_results
+        # Use UnusedCodeDetector from Unused.py instead of old function
+        detector = UnusedCodeDetector()
+        detector.find_unused(
+            files,
+            ignore_dirs=self.ignore_dirs if hasattr(self, "ignore_dirs") else None,
+        )
+        return detector.results
 
     def analyze_bugs_and_safety(self, files):
         """
@@ -165,15 +130,19 @@ class ReplicheckRunner:
             large_classes = self.analyze_large_classes(files)
             duplicates = detector.find_duplicates(code_blocks)
             unused_imports_vars = self.analyze_unused_imports_vars(files)
-            todo_fixme_comments = find_todo_fixme_comments(files)
+
+            # Use TodoFixmeDetector instead of old function
+            todo_fixme_detector = TodoFixmeDetector()
+            todo_fixme_detector.find_todo_fixme_comments(files)
+            todo_fixme_comments = todo_fixme_detector.results
 
             # --- Bugs and Safety Issues ---
             bns_results = self.analyze_bugs_and_safety(files)
 
             output_path = Path(self.output_file) if self.output_file else None
             reporter.generate_report(
-                duplicates,
-                output_path,
+                output_file=output_path,
+                duplicates=duplicates,
                 complexity_results=high_complexity,
                 large_files=large_files,
                 large_classes=large_classes,

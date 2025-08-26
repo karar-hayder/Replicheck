@@ -1,17 +1,149 @@
 """
-Reporting logic for code duplication results.
+Reporting logic for code duplication and code quality results, with configurable template-driven output.
 """
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 from colorama import Fore, Style, init
 
-init()
+init(autoreset=True)
 
 
 class Reporter:
+    """
+    Flexible, production-level reporter for code duplication and code quality results.
+    Uses a config-driven template system for output formatting.
+    """
+
+    DEFAULT_CONFIG = {
+        "complexity_results": {
+            "title": "High Cyclomatic Complexity Functions",
+            "color": Fore.MAGENTA,
+            "formatter": lambda item: (
+                f"- {item['file']}:{item['lineno']} {item['name']} "
+                f"(complexity: {item['complexity']}) [{item['severity']}]"
+            ),
+            "empty_message": "No high cyclomatic complexity functions found.",
+            "summary": lambda items: (
+                f"- {len(items) if items else 0} high cyclomatic complexity functions"
+                + (
+                    " ("
+                    + ", ".join(
+                        f"{sum(1 for x in items if x.get('severity') == sev)} {sev}"
+                        for sev in Reporter.severity_order
+                        if items and any(x.get("severity") == sev for x in items)
+                    )
+                    + ")"
+                    if items and any(x.get("severity") for x in items)
+                    else ""
+                )
+                if items
+                else "- 0 high cyclomatic complexity functions ✅"
+            ),
+        },
+        "large_files": {
+            "title": "Large Files",
+            "color": Fore.MAGENTA,
+            "formatter": lambda item: (
+                f"- {item['file']} (tokens: {item['token_count']}) [{item['severity']}]"
+            ),
+            "empty_message": "No large files found.",
+            "summary": lambda items: (
+                f"- {len(items) if items else 0} large files"
+                + (
+                    " ("
+                    + ", ".join(
+                        f"{sum(1 for x in items if x.get('severity') == sev)} {sev}"
+                        for sev in Reporter.severity_order
+                        if items and any(x.get("severity") == sev for x in items)
+                    )
+                    + ")"
+                    if items and any(x.get("severity") for x in items)
+                    else ""
+                )
+                if items
+                else "- 0 large files ✅"
+            ),
+        },
+        "large_classes": {
+            "title": "Large Classes",
+            "color": Fore.MAGENTA,
+            "formatter": lambda item: (
+                f"- {item['file']}:{item['start_line']} {item['name']} "
+                f"(tokens: {item['token_count']}) [{item['severity']}]"
+            ),
+            "empty_message": "No large classes found.",
+            "summary": lambda items: (
+                f"- {len(items) if items else 0} large classes"
+                + (
+                    " ("
+                    + ", ".join(
+                        f"{sum(1 for x in items if x.get('severity') == sev)} {sev}"
+                        for sev in Reporter.severity_order
+                        if items and any(x.get("severity") == sev for x in items)
+                    )
+                    + ")"
+                    if items and any(x.get("severity") for x in items)
+                    else ""
+                )
+                if items
+                else "- 0 large classes ✅"
+            ),
+        },
+        "unused": {
+            "title": "Unused Imports and Vars",
+            "color": Fore.MAGENTA,
+            "formatter": lambda item: (
+                f"- {item['file']}:{item['line']} [{item['code']}] {item['message']}"
+            ),
+            "empty_message": "No unused imports or variables found.",
+            "summary": lambda items: (
+                f"- {len(items) if items else 0} unused imports/variables"
+                if items
+                else "- 0 unused imports/variables ✅"
+            ),
+        },
+        "todo_fixme": {
+            "title": "TODO/FIXME Comments",
+            "color": Fore.MAGENTA,
+            "formatter": lambda item: (
+                f"- {item['file']}:{item['line']} [{item['type']}] {item['text']}"
+            ),
+            "empty_message": "No TODO/FIXME comments found.",
+            "summary": lambda items: (
+                f"- {len(items) if items else 0} TODO/FIXME comments"
+                if items
+                else "- 0 TODO/FIXME comments ✅"
+            ),
+        },
+        "duplicates": {
+            "title": "Code Duplications",
+            "color": Fore.MAGENTA,
+            "formatter": None,  # Special handling
+            "empty_message": "No code duplications found!",
+            "summary": lambda items: (
+                f"- {len(items) if items else 0} duplicate code blocks"
+                if items
+                else "- 0 duplicate code blocks ✅"
+            ),
+        },
+        "bns_results": {
+            "title": "Bugs and Safety Issues",
+            "color": Fore.MAGENTA,
+            "formatter": lambda item: (
+                f"- {item.get('file', 'Unknown')}:{item.get('line', '?')} {item.get('message', '')}"
+            ),
+            "empty_message": "No Bugs and Safety Issues found.",
+            "summary": lambda items: (
+                f"- {len(items) if items else 0} Bugs and Safety Issues"
+                if items
+                else "- 0 Bugs and Safety Issues ✅"
+            ),
+        },
+    }
+
     severity_order = {
         "Critical 🔴": 4,
         "High 🟠": 3,
@@ -20,607 +152,230 @@ class Reporter:
         "None": 0,
     }
 
-    def __init__(self, output_format: str = "text"):
-        if output_format not in {"text", "json", "markdown"}:
-            raise ValueError(
-                "Output format must be either 'text', 'json', or 'markdown'"
-            )
+    def __init__(
+        self, output_format: str = "text", config: Optional[Dict[str, Any]] = None
+    ):
+        allowed_formats = {"text", "json", "markdown"}
+        if output_format not in allowed_formats:
+            raise ValueError(f"Output format must be one of {allowed_formats}")
         self.output_format = output_format
+        self.config = self.DEFAULT_CONFIG.copy()
+        if config:
+            self.config.update(config)
 
     def _format_path(self, file, line=None, mode="plain"):
-        # mode: 'plain', 'markdown', 'terminal'
-        if line is not None:
-            path_str = f"{file}:{line}"
-        else:
-            path_str = file
+        path_str = f"{file}:{line}" if line is not None else file
         if mode == "markdown":
             if line is not None:
                 return f"[{file}:{line}]({file}#L{line})"
-            else:
-                return f"[{file}]({file})"
+            return f"[{file}]({file})"
         elif mode == "terminal":
-            # OSC 8 hyperlink (if supported)
             url = f"file://{file}"
             if line is not None:
                 url += f"#L{line}"
             return f"\033]8;;{url}\033\\{path_str}\033]8;;\033\\"
-        else:
-            return path_str
+        return path_str
 
     def _count_severity(self, items, key="severity", level=None):
         if not items:
             return 0
-        if level:
+        if level is not None:
             return sum(1 for x in items if x.get(key) == level)
         return len(items)
 
-    def _generate_summary(
-        self,
-        complexity_results,
-        large_files,
-        large_classes,
-        unused,
-        todo_fixme,
-        duplicates,
-        bns_results=None,
-    ):
+    def _generate_summary(self, **kwargs) -> List[str]:
+        """
+        Dynamically generate a summary for all configured sections.
+        Uses per-section summary logic if provided in config, otherwise falls back to a generic summary.
+        """
         summary = []
-        # Complexity
-        n_complex = self._count_severity(complexity_results)
-        n_crit_complex = self._count_severity(complexity_results, level="Critical 🔴")
-        if n_complex:
-            summary.append(
-                f"- {n_complex} high complexity functions ({n_crit_complex} Critical 🔴)"
+        for key, section in self.config.items():
+            items = kwargs.get(key)
+            summary_func = section.get("summary")
+            if callable(summary_func):
+                try:
+                    summary.append(summary_func(items))
+                    continue
+                except Exception as e:
+                    summary.append(f"[Error in summary for {key}: {e}]")
+                    continue
+
+            n = len(items) if items else 0
+
+            # Try to extract severity levels if present
+            levels = {}
+            if (
+                items
+                and isinstance(items, list)
+                and items
+                and isinstance(items[0], dict)
+            ):
+                for sev in self.severity_order:
+                    count = sum(1 for x in items if x.get("severity") == sev)
+                    if count:
+                        levels[sev] = count
+
+            # Compose summary line dynamically
+            title = section.get("title", key.replace("_", " ").title())
+            sev_str = (
+                " (" + ", ".join(f"{v} {k}" for k, v in levels.items()) + ")"
+                if levels
+                else ""
             )
-        else:
-            summary.append("- 0 high complexity functions ✅")
-        # Large files
-        n_large_files = self._count_severity(large_files)
-        n_crit_files = self._count_severity(large_files, level="Critical 🔴")
-        if n_large_files:
-            summary.append(
-                f"- {n_large_files} large files ({n_crit_files} Critical 🔴)"
-            )
-        else:
-            summary.append("- 0 large files ✅")
-        # Large classes
-        n_large_classes = self._count_severity(large_classes)
-        n_high_classes = self._count_severity(large_classes, level="High 🟠")
-        if n_large_classes:
-            summary.append(
-                f"- {n_large_classes} large classes ({n_high_classes} High 🟠)"
-            )
-        else:
-            summary.append("- 0 large classes ✅")
-        # Unused imports/variables
-        n_unused = len(unused) if unused else 0
-        summary.append(
-            f"- {n_unused} unused imports/variables"
-            if n_unused
-            else "- 0 unused imports/variables ✅"
-        )
-        # TODO/FIXME
-        n_todo = len(todo_fixme) if todo_fixme else 0
-        summary.append(
-            f"- {n_todo} TODO/FIXME comments"
-            if n_todo
-            else "- 0 TODO/FIXME comments ✅"
-        )
-        # Duplicates
-        n_dupes = len(duplicates) if duplicates else 0
-        summary.append(
-            f"- {n_dupes} duplicate code blocks"
-            if n_dupes
-            else "- 0 duplicate code blocks ✅"
-        )
-        # BNS.py section
-        if bns_results is not None:
-            n_bns = len(bns_results)
-            summary.append(
-                f"- {n_bns} Bugs and Safety Issues."
-                if n_bns
-                else "- 0 Bugs and Safety Issues. ✅"
-            )
+            if n:
+                summary.append(f"- {n} {title.lower()}{sev_str}")
+            else:
+                summary.append(f"- 0 {title.lower()} ✅")
         return summary
 
-    # --- Section Generators for Text Report ---
+    def _render_section(
+        self,
+        key: str,
+        items: Optional[List[Dict[str, Any]]],
+        output: List[str],
+        color: Optional[str] = None,
+        mode: str = "text",
+    ):
+        section = self.config[key]
+        title = section["title"]
+        color = section.get("color", color)
+        formatter: Optional[Callable[[Dict[str, Any]], str]] = section.get("formatter")
+        empty_message = section.get("empty_message", "No results found.")
 
-    def _text_section_header(self, title, color=None):
-        if color:
-            return f"{color}{title}{Style.RESET_ALL}"
-        return title
-
-    def _text_section_complexity(self, complexity_results, console_output, file_output):
-        if complexity_results is not None:
-            if complexity_results:
-                complexity_results = sorted(
-                    complexity_results,
-                    key=lambda x: (
-                        self.severity_order.get(x.get("severity"), 0),
-                        x.get("complexity", 0),
-                    ),
-                    reverse=True,
+        if items is not None:
+            if items:
+                output.append(
+                    f"{color}{title}:{Style.RESET_ALL}"
+                    if color and mode == "text"
+                    else f"{title}:"
                 )
-                threshold = complexity_results[0].get("threshold", "N/A")
-                console_output.append(
-                    self._text_section_header(
-                        f"High Cyclomatic Complexity Functions (threshold: >= {threshold}):",
-                        Fore.MAGENTA,
-                    )
-                )
-                file_output.append(
-                    f"High Cyclomatic Complexity Functions (threshold: >= {threshold}):"
-                )
-                for item in complexity_results:
-                    line = f"- {item['file']}:{item['lineno']} {item['name']} (complexity: {item['complexity']}) [{item['severity']}]"
-                    console_output.append(line)
-                    file_output.append(line)
-            else:
-                console_output.append(
-                    self._text_section_header(
-                        "No high cyclomatic complexity functions found.", Fore.GREEN
-                    )
-                )
-                file_output.append("No high cyclomatic complexity functions found.")
-            console_output.append("")
-            file_output.append("")
-
-    def _text_section_large_files(self, large_files, console_output, file_output):
-        if large_files is not None:
-            if large_files:
-                large_files = sorted(
-                    large_files,
-                    key=lambda x: (
-                        self.severity_order.get(x.get("severity"), 0),
-                        x.get("token_count", 0),
-                    ),
-                    reverse=True,
-                )
-                threshold = (
-                    large_files[0].get("threshold", "N/A") if large_files else "N/A"
-                )
-                top_n = large_files[0].get("top_n", "N/A") if large_files else "N/A"
-                console_output.append(
-                    self._text_section_header(
-                        f"Large Files (threshold: >= {threshold}, top N: {top_n}):",
-                        Fore.MAGENTA,
-                    )
-                )
-                file_output.append(
-                    f"Large Files (threshold: >= {threshold}, top N: {top_n}):"
-                )
-                for item in large_files:
-                    line = f"- {item['file']} (tokens: {item['token_count']}) [{item['severity']}]"
-                    console_output.append(line)
-                    file_output.append(line)
-            else:
-                console_output.append(
-                    self._text_section_header("No large files found.", Fore.GREEN)
-                )
-                file_output.append("No large files found.")
-            console_output.append("")
-            file_output.append("")
-
-    def _text_section_large_classes(self, large_classes, console_output, file_output):
-        if large_classes is not None:
-            if large_classes:
-                large_classes = sorted(
-                    large_classes,
-                    key=lambda x: (
-                        self.severity_order.get(x.get("severity"), 0),
-                        x.get("token_count", 0),
-                    ),
-                    reverse=True,
-                )
-                threshold = (
-                    large_classes[0].get("threshold", "N/A") if large_classes else "N/A"
-                )
-                top_n = large_classes[0].get("top_n", "N/A") if large_classes else "N/A"
-                console_output.append(
-                    self._text_section_header(
-                        f"Large Classes (threshold: >= {threshold}, top N: {top_n}):",
-                        Fore.MAGENTA,
-                    )
-                )
-                file_output.append(
-                    f"Large Classes (threshold: >= {threshold}, top N: {top_n}):"
-                )
-                for item in large_classes:
-                    line = f"- {item['file']}:{item['start_line']} {item['name']} (tokens: {item['token_count']}) [{item['severity']}]"
-                    console_output.append(line)
-                    file_output.append(line)
-            else:
-                console_output.append(
-                    self._text_section_header("No large classes found.", Fore.GREEN)
-                )
-                file_output.append("No large classes found.")
-            console_output.append("")
-            file_output.append("")
-
-    def _text_section_unused(self, unused, console_output, file_output):
-        if unused is not None:
-            if unused:
-                console_output.append(
-                    self._text_section_header("Unused Imports and Vars:", Fore.MAGENTA)
-                )
-                file_output.append("Unused Imports and Vars:")
-                for item in unused:
-                    line = f"- {item['file']}:{item['line']} [{item['code']}] {item['message']}"
-                    console_output.append(line)
-                    file_output.append(line)
-            else:
-                console_output.append(
-                    self._text_section_header(
-                        "No unused imports or variables found.", Fore.GREEN
-                    )
-                )
-                file_output.append("No unused imports or variables found.")
-            console_output.append("")
-            file_output.append("")
-
-    def _text_section_todo_fixme(self, todo_fixme, console_output, file_output):
-        if todo_fixme is not None:
-            if todo_fixme:
-                console_output.append(
-                    self._text_section_header("TODO/FIXME Comments:", Fore.MAGENTA)
-                )
-                file_output.append("TODO/FIXME Comments:")
-                for item in todo_fixme:
-                    line = f"- {item['file']}:{item['line']} [{item['type']}] {item['text']}"
-                    console_output.append(line)
-                    file_output.append(line)
-            else:
-                console_output.append(
-                    self._text_section_header(
-                        "No TODO/FIXME comments found.", Fore.GREEN
-                    )
-                )
-                file_output.append("No TODO/FIXME comments found.")
-            console_output.append("")
-            file_output.append("")
-
-    def _text_section_duplicates(self, duplicates, console_output, file_output):
-        if duplicates:
-            is_group_format = (
-                "num_duplicates" in duplicates[0] and "locations" in duplicates[0]
-            )
-            if is_group_format:
-                console_output.append(
-                    self._text_section_header("Code Duplications:", Fore.MAGENTA)
-                )
-                file_output.append("Code Duplications:")
-                for i, group in enumerate(duplicates, 1):
-                    cross = " (cross-file)" if group.get("cross_file") else ""
-                    line = f"Clone #{i}: size={group['size']} tokens, count={group['num_duplicates']}{cross}"
-                    console_output.append(line)
-                    file_output.append(line)
-                    for loc in group["locations"]:
-                        loc_line = (
-                            f"    - {loc['file']}:{loc['start_line']}-{loc['end_line']}"
+                if key == "duplicates" and formatter is None:
+                    # Special handling for duplicates group format
+                    for i, group in enumerate(items, 1):
+                        cross = " (cross-file)" if group.get("cross_file") else ""
+                        line = (
+                            f"Clone #{i}: size={group.get('size', '?')} tokens, "
+                            f"count={group.get('num_duplicates', '?')}{cross}"
                         )
-                        console_output.append(loc_line)
-                        file_output.append(loc_line)
-                    snippet = " ".join(group["tokens"][:10]) + (
-                        " ..." if len(group["tokens"]) > 10 else ""
-                    )
-                    console_output.append(f"    Tokens: {snippet}")
-                    file_output.append(f"    Tokens: {snippet}")
-                    console_output.append("")
-                    file_output.append("")
-            else:
-                for i, dup in enumerate(duplicates, 1):
-                    sim = dup.get("similarity", 0)
-                    sim_pct = f"{sim*100:.2f}%" if isinstance(sim, float) else str(sim)
-                    line = f"Duplication #{i}: Similarity: {sim_pct}, size={dup.get('size', '?')} tokens"
-                    console_output.append(line)
-                    file_output.append(line)
-                    for block_key in ("block1", "block2"):
-                        block = dup.get(block_key)
-                        if block:
-                            loc_line = f"    - {block['file']}:{block['start_line']}-{block['end_line']}"
-                            console_output.append(loc_line)
-                            file_output.append(loc_line)
-                    tokens = dup.get("tokens")
-                    if tokens:
+                        output.append(line)
+                        for loc in group.get("locations", []):
+                            loc_line = f"    - {loc.get('file', '?')}:{loc.get('start_line', '?')}-{loc.get('end_line', '?')}"
+                            output.append(loc_line)
+                        tokens = group.get("tokens", [])
                         snippet = " ".join(tokens[:10]) + (
                             " ..." if len(tokens) > 10 else ""
                         )
-                        console_output.append(f"    Tokens: {snippet}")
-                        file_output.append(f"    Tokens: {snippet}")
-                    console_output.append("")
-                    file_output.append("")
-        else:
-            console_output.append(
-                self._text_section_header("No code duplications found!", Fore.GREEN)
-            )
-            file_output.append("No code duplications found!")
-
-    def _text_section_bns(self, bns_results, console_output, file_output):
-        if bns_results is not None:
-            if bns_results:
-                console_output.append(
-                    self._text_section_header("Bugs and Safety Issues:", Fore.MAGENTA)
-                )
-                file_output.append("Bugs and Safety Issues:")
-                for item in bns_results:
-                    # You can customize the line format as needed
-                    line = f"- {item.get('file', 'Unknown')}:{item.get('line', '?')} {item.get('message', '')}"
-                    console_output.append(line)
-                    file_output.append(line)
+                        output.append(f"    Tokens: {snippet}")
+                        output.append("")
+                else:
+                    for item in items:
+                        try:
+                            output.append(formatter(item))
+                        except Exception as e:
+                            output.append(f"[Error formatting item: {e}]")
             else:
-                console_output.append(
-                    self._text_section_header(
-                        "No Bugs and Safety Issues found.", Fore.GREEN
-                    )
+                msg = (
+                    f"{color}{empty_message}{Style.RESET_ALL}"
+                    if color and mode == "text"
+                    else empty_message
                 )
-                file_output.append("No Bugs and Safety Issues found.")
-            console_output.append("")
-            file_output.append("")
+                output.append(msg)
+            output.append("")
 
-    def _generate_text_report(
-        self,
-        duplicates: List[Dict[str, Any]],
-        output_file: Path = None,
-        complexity_results: List[Dict[str, Any]] = None,
-        large_files: List[Dict[str, Any]] = None,
-        large_classes: List[Dict[str, Any]] = None,
-        unused: List[Dict[str, Any]] = None,
-        todo_fixme: List[Dict[str, Any]] = None,
-        bns_results: List[Dict[str, Any]] = None,
-    ):
-        """Generate a human-readable text report."""
-        console_output = []
-        file_output = []
-
+    def _generate_text_report(self, output_file: Optional[Path] = None, **kwargs):
+        output = []
         # Header
-        console_output.append(
-            self._text_section_header("\nCode Duplication Report\n", Fore.CYAN)
-        )
-        file_output.append("\nCode Duplication Report\n")
-
+        output.append(f"{Fore.CYAN}\nCode Quality Report\n{Style.RESET_ALL}")
         # Summary
-        summary_lines = self._generate_summary(
-            complexity_results,
-            large_files,
-            large_classes,
-            unused,
-            todo_fixme,
-            duplicates,
-            bns_results,
-        )
-        console_output.append(self._text_section_header("Summary:", Fore.YELLOW))
-        file_output.append("Summary:")
-        for line in summary_lines:
-            console_output.append(line)
-            file_output.append(line)
-        console_output.append("")
-        file_output.append("")
-
+        output.append(f"{Fore.YELLOW}Summary:{Style.RESET_ALL}")
+        for line in self._generate_summary(**kwargs):
+            output.append(line)
+        output.append("")
         # Sections
-        self._text_section_complexity(complexity_results, console_output, file_output)
-        self._text_section_large_files(large_files, console_output, file_output)
-        self._text_section_large_classes(large_classes, console_output, file_output)
-        self._text_section_unused(unused, console_output, file_output)
-        self._text_section_todo_fixme(todo_fixme, console_output, file_output)
-        self._text_section_duplicates(duplicates, console_output, file_output)
-        self._text_section_bns(bns_results, console_output, file_output)
-
-        # Output
+        for key in self.config:
+            self._render_section(key, kwargs.get(key), output, mode="text")
+        output_str = "\n".join(output)
         if output_file:
-            output_file.write_text("\n".join(file_output), encoding="utf-8")
+            try:
+                output_file.write_text(output_str, encoding="utf-8")
+                print(f"\nReport written to: {output_file}")
+            except Exception as e:
+                print(f"Error writing report: {e}\n{output_str}")
         else:
-            print("\n".join(console_output))
+            print(output_str)
 
-    # --- JSON Report ---
-
-    def _convert_legacy_duplicates_to_group(self, duplicates):
-        new_duplicates = []
-        for dup in duplicates:
-            group = {
-                "size": dup.get("size", 0),
-                "num_duplicates": 2,
-                "locations": [dup.get("block1", {}), dup.get("block2", {})],
-                "cross_file": dup.get("block1", {}).get("file")
-                != dup.get("block2", {}).get("file"),
-                "tokens": dup.get("tokens", []),
-                "similarity": dup.get("similarity"),
-            }
-            new_duplicates.append(group)
-        return new_duplicates
-
-    def _generate_json_report(
-        self,
-        duplicates: List[Dict[str, Any]],
-        output_file: Path = None,
-        complexity_results: List[Dict[str, Any]] = None,
-        large_files: List[Dict[str, Any]] = None,
-        large_classes: List[Dict[str, Any]] = None,
-        unused: List[Dict[str, Any]] = None,
-        todo_fixme: List[Dict[str, Any]] = None,
-        bns_results: List[Dict[str, Any]] = None,
-    ):
-        """Generate a JSON report."""
-        is_group_format = bool(
-            duplicates
-            and "num_duplicates" in duplicates[0]
-            and "locations" in duplicates[0]
-        )
-        if not is_group_format:
-            duplicates = self._convert_legacy_duplicates_to_group(duplicates)
-
-        report = {
-            "duplicates": duplicates,
-            "total_duplications": len(duplicates),
-            "high_cyclomatic_complexity": complexity_results or [],
-            "large_files": large_files or [],
-            "large_classes": large_classes or [],
-            "large_file_threshold": (
-                large_files[0].get("threshold", "N/A") if large_files else None
-            ),
-            "large_class_threshold": (
-                large_classes[0].get("threshold", "N/A") if large_classes else None
-            ),
-            "top_n_large": large_files[0].get("top_n", "N/A") if large_files else None,
-            "unused": unused or [],
-            "todo_fixme_comments": todo_fixme or [],
-            "bugs_n_safety": bns_results or [],
-        }
+    def _generate_json_report(self, output_file: Optional[Path] = None, **kwargs):
+        # Compose a dict with all results
+        report = {k: kwargs.get(k, []) for k in self.config}
+        report["summary"] = self._generate_summary(**kwargs)
         json_str = json.dumps(report, indent=2)
         if output_file:
-            output_file.write_text(json_str, encoding="utf-8")
+            try:
+                output_file.write_text(json_str, encoding="utf-8")
+                print(f"\nReport written to: {output_file}")
+            except Exception as e:
+                print(f"Error writing report: {e}\n{json_str}")
         else:
             print(json_str)
 
-    # --- Markdown Report ---
-
-    def _markdown_section_complexity(self, complexity_results, md):
-        if complexity_results:
-            md.append("## High Cyclomatic Complexity Functions")
-            for item in complexity_results:
-                md.append(
-                    f"- {self._format_path(item['file'], item['lineno'], 'markdown')} {item['name']} (complexity: {item['complexity']}) [{item['severity']}]"
-                )
-
-    def _markdown_section_large_files(self, large_files, md):
-        if large_files:
-            md.append("\n## Large Files")
-            for item in large_files:
-                md.append(
-                    f"- {self._format_path(item['file'], None, 'markdown')} (tokens: {item['token_count']}) [{item['severity']}]"
-                )
-
-    def _markdown_section_large_classes(self, large_classes, md):
-        if large_classes:
-            md.append("\n## Large Classes")
-            for item in large_classes:
-                md.append(
-                    f"- {self._format_path(item['file'], item['start_line'], 'markdown')} {item['name']} (tokens: {item['token_count']}) [{item['severity']}]"
-                )
-
-    def _markdown_section_unused(self, unused, md):
-        if unused:
-            md.append("## Unused Imports and Vars")
-            for item in unused:
-                md.append(
-                    f"- {self._format_path(item['file'], item['line'], 'markdown')} [{item['code']}] {item['message']}"
-                )
-
-    def _markdown_section_todo_fixme(self, todo_fixme, md):
-        if todo_fixme:
-            md.append("\n## TODO/FIXME Comments")
-            for item in todo_fixme:
-                md.append(
-                    f"- {self._format_path(item['file'], item['line'], 'markdown')} [{item['type']}] {item['text']}"
-                )
-
-    def _markdown_section_duplicates(self, duplicates, md):
-        if duplicates:
-            md.append("\n## Code Duplications")
-            is_group_format = (
-                "num_duplicates" in duplicates[0] and "locations" in duplicates[0]
-            )
-            if is_group_format:
-                for i, group in enumerate(duplicates, 1):
-                    cross = " (cross-file)" if group.get("cross_file") else ""
-                    md.append(
-                        f"- Clone #{i}: size={group['size']} tokens, count={group['num_duplicates']}{cross}"
-                    )
-                    for loc in group["locations"]:
-                        md.append(
-                            f"    - {self._format_path(loc['file'], loc['start_line'], 'markdown')} - {loc['file']}:{loc['start_line']}-{loc['end_line']}"
-                        )
-                    snippet = " ".join(group["tokens"][:10]) + (
-                        " ..." if len(group["tokens"]) > 10 else ""
-                    )
-                    md.append(f"    Tokens: {snippet}")
-            else:
-                for i, dup in enumerate(duplicates, 1):
-                    sim = dup.get("similarity", 0)
-                    sim_pct = f"{sim*100:.2f}%" if isinstance(sim, float) else str(sim)
-                    md.append(
-                        f"- Duplication #{i}: Similarity: {sim_pct}, size={dup.get('size', '?')} tokens"
-                    )
-                    for block_key in ("block1", "block2"):
-                        block = dup.get(block_key)
-                        if block:
-                            md.append(
-                                f"    - {self._format_path(block['file'], block['start_line'], 'markdown')} - {block['file']}:{block['start_line']}-{block['end_line']}"
-                            )
-                    tokens = dup.get("tokens")
-                    if tokens:
-                        snippet = " ".join(tokens[:10]) + (
-                            " ..." if len(tokens) > 10 else ""
-                        )
-                        md.append(f"    Tokens: {snippet}")
-        else:
-            md.append("No code duplications found!")
-
-    def _markdown_section_bns(self, bns_results, md):
-        if bns_results is not None:
-            md.append("\n## @BNS.py Issues")
-            if bns_results:
-                for item in bns_results:
-                    md.append(
-                        f"- {self._format_path(item.get('file', '@BNS.py'), item.get('line', None), 'markdown')} {item.get('message', '')}"
-                    )
-            else:
-                md.append("No issues in @BNS.py found.")
-
-    def _generate_markdown_report(
-        self,
-        duplicates: List[Dict[str, Any]],
-        output_file: Path = None,
-        complexity_results: List[Dict[str, Any]] = None,
-        large_files: List[Dict[str, Any]] = None,
-        large_classes: List[Dict[str, Any]] = None,
-        unused: List[Dict[str, Any]] = None,
-        todo_fixme: List[Dict[str, Any]] = None,
-        bns_results: List[Dict[str, Any]] = None,
-    ):
-        """Generate a Markdown report."""
+    def _generate_markdown_report(self, output_file: Optional[Path] = None, **kwargs):
         md = []
-        md.append("# Code Duplication Report\n")
-        # Summary
+        md.append("# Code Quality Report\n")
         md.append("## Summary")
-        for line in self._generate_summary(
-            complexity_results,
-            large_files,
-            large_classes,
-            unused,
-            todo_fixme,
-            duplicates,
-            bns_results,
-        ):
-            md.append(f"{line}")
+        for line in self._generate_summary(**kwargs):
+            md.append(line)
         md.append("")
-        self._markdown_section_complexity(complexity_results, md)
-        self._markdown_section_large_files(large_files, md)
-        self._markdown_section_large_classes(large_classes, md)
-        self._markdown_section_unused(unused, md)
-        self._markdown_section_todo_fixme(todo_fixme, md)
-        self._markdown_section_duplicates(duplicates, md)
-        self._markdown_section_bns(bns_results, md)
+        for key, section in self.config.items():
+            title = section["title"]
+            formatter = section.get("formatter")
+            items = kwargs.get(key)
+            if items is not None:
+                if items:
+                    md.append(f"## {title}")
+                    if key == "duplicates" and formatter is None:
+                        for i, group in enumerate(items, 1):
+                            cross = " (cross-file)" if group.get("cross_file") else ""
+                            md.append(
+                                f"- Clone #{i}: size={group.get('size', '?')} tokens, count={group.get('num_duplicates', '?')}{cross}"
+                            )
+                            for loc in group.get("locations", []):
+                                md.append(
+                                    f"    - {self._format_path(loc.get('file', '?'), loc.get('start_line', '?'), 'markdown')} - {loc.get('file', '?')}:{loc.get('start_line', '?')}-{loc.get('end_line', '?')}"
+                                )
+                            tokens = group.get("tokens", [])
+                            snippet = " ".join(tokens[:10]) + (
+                                " ..." if len(tokens) > 10 else ""
+                            )
+                            md.append(f"    Tokens: {snippet}")
+                            md.append("")
+                    else:
+                        for item in items:
+                            try:
+                                md.append(formatter(item))
+                            except Exception as e:
+                                md.append(f"[Error formatting item: {e}]")
+                else:
+                    md.append(
+                        f"**{section.get('empty_message', 'No results found.')}**"
+                    )
+                md.append("")
         md_str = "\n".join(md)
         if output_file:
-            output_file.write_text(md_str, encoding="utf-8")
+            try:
+                output_file.write_text(md_str, encoding="utf-8")
+                print(f"\nReport written to: {output_file}")
+            except Exception as e:
+                print(f"Error writing report: {e}\n{md_str}")
         else:
             print(md_str)
 
-    # --- Main Report Generator ---
-
     def generate_report(
         self,
-        duplicates: List[Dict[str, Any]],
-        output_file: Path = None,
-        complexity_results: List[Dict[str, Any]] = None,
-        large_files: List[Dict[str, Any]] = None,
-        large_classes: List[Dict[str, Any]] = None,
-        unused: List[Dict[str, Any]] = None,
-        todo_fixme: List[Dict[str, Any]] = None,
-        bns_results: List[Dict[str, Any]] = None,
+        output_file: Optional[Path] = None,
+        **kwargs,
     ):
         """
-        Generate a report of code duplications.
+        Generate a report of code duplications and code quality issues.
 
         Args:
             duplicates: List of duplicate code blocks
@@ -630,50 +385,28 @@ class Reporter:
             large_classes: List of large classes (optional)
             unused: List of unused imports and vars (optional)
             todo_fixme: List of TODO/FIXME comments (optional)
-            bns_results: List of Bugs and Seafety issues  (optional)
-
+            bns_results: List of Bugs and Safety issues (optional)
+            kwargs: Additional result types for custom templates/config
         """
+        # Compose all results into a dict for template-driven rendering
+        results = {}
+        results.update(kwargs)
         try:
             if self.output_format == "json":
-                self._generate_json_report(
-                    duplicates,
-                    output_file,
-                    complexity_results,
-                    large_files,
-                    large_classes,
-                    unused,
-                    todo_fixme,
-                    bns_results,
-                )
+                self._generate_json_report(output_file=output_file, **results)
             elif self.output_format == "markdown":
-                self._generate_markdown_report(
-                    duplicates,
-                    output_file,
-                    complexity_results,
-                    large_files,
-                    large_classes,
-                    unused,
-                    todo_fixme,
-                    bns_results,
-                )
+                self._generate_markdown_report(output_file=output_file, **results)
             else:
-                self._generate_text_report(
-                    duplicates,
-                    output_file,
-                    complexity_results,
-                    large_files,
-                    large_classes,
-                    unused,
-                    todo_fixme,
-                    bns_results,
-                )
-
-            if output_file:
-                print(f"\nReport written to: {output_file}")
+                self._generate_text_report(output_file=output_file, **results)
         except Exception as e:
             print(f"\nError writing report: {e}")
             # Fallback to console output
-            if self.output_format == "json":
-                self._generate_json_report(duplicates, None)
-            else:
-                self._generate_text_report(duplicates, None)
+            try:
+                if self.output_format == "json":
+                    self._generate_json_report(output_file=None, **results)
+                elif self.output_format == "markdown":
+                    self._generate_markdown_report(output_file=None, **results)
+                else:
+                    self._generate_text_report(output_file=None, **results)
+            except Exception as fallback_e:
+                print(f"Failed to generate fallback report: {fallback_e}")

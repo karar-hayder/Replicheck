@@ -6,7 +6,10 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from replicheck import CodeParser, DuplicateDetector, Reporter
+from replicheck import CodeParser, Reporter
+
+# Use DuplicateDetector from the actual Duplication.py module
+from replicheck.tools.Duplication.Duplication import DuplicateDetector
 from replicheck.utils import find_files
 
 
