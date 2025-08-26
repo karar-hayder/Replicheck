@@ -2,23 +2,14 @@ from pathlib import Path
 
 from replicheck.parser import CodeParser
 from replicheck.reporter import Reporter
+from replicheck.tools.bugNsafety.BNS import BugNSafetyAnalyzer
+from replicheck.tools.CyclomaticComplexity.CCA import CyclomaticComplexityAnalyzer
 from replicheck.tools.Duplication.Duplication import DuplicateDetector
 from replicheck.tools.LargeDetection.LC import LargeClassDetector
 from replicheck.tools.LargeDetection.LF import LargeFileDetector
 from replicheck.tools.TodoFixme.TDFM import TodoFixmeDetector
-from replicheck.utils import find_files, find_flake8_unused
-
-# --- Cyclomatic Complexity Analysis ---
-try:
-    from replicheck.tools.CyclomaticComplexity.CCA import CyclomaticComplexityAnalyzer
-except ImportError:
-    CyclomaticComplexityAnalyzer = None
-
-# --- Bugs and Safety Issues ---
-try:
-    from replicheck.tools.bugNsafety.BNS import BugNSafetyAnalyzer
-except ImportError:
-    BugNSafetyAnalyzer = None
+from replicheck.tools.Unused.Unused import UnusedCodeDetector
+from replicheck.utils import find_files
 
 
 class ReplicheckRunner:
@@ -71,24 +62,13 @@ class ReplicheckRunner:
         return large_classes
 
     def analyze_unused_imports_vars(self, files):
-        # Only process Python files for now
-        suffix_map = {
-            ".py": [],
-            ".js": [],
-            ".jsx": [],
-            ".ts": [],
-            ".tsx": [],
-            ".cs": [],
-        }
-        for f in files:
-            lower = str(f).lower()
-            for ext in suffix_map:
-                if lower.endswith(ext):
-                    suffix_map[ext].append(f)
-                    break
-        py_files = suffix_map[".py"]
-        py_results = find_flake8_unused(py_files) if py_files else []
-        return py_results
+        # Use UnusedCodeDetector from Unused.py instead of old function
+        detector = UnusedCodeDetector()
+        detector.find_unused(
+            files,
+            ignore_dirs=self.ignore_dirs if hasattr(self, "ignore_dirs") else None,
+        )
+        return detector.results
 
     def analyze_bugs_and_safety(self, files):
         """

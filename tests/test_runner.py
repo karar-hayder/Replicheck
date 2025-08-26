@@ -2,21 +2,12 @@ import pytest
 
 from main import main
 from replicheck.runner import ReplicheckRunner
+from replicheck.tools.CyclomaticComplexity.CCA import CyclomaticComplexityAnalyzer
 from replicheck.tools.LargeDetection.LC import LargeClassDetector
 from replicheck.tools.LargeDetection.LF import LargeFileDetector
 from replicheck.tools.TodoFixme.TDFM import TodoFixmeDetector
-from replicheck.utils import (
-    compute_severity,
-    find_files,
-    find_flake8_unused,
-    get_file_hash,
-)
-
-# --- Cyclomatic Complexity Analyzer from CCA.py ---
-try:
-    from replicheck.tools.CyclomaticComplexity.CCA import CyclomaticComplexityAnalyzer
-except ImportError:
-    CyclomaticComplexityAnalyzer = None
+from replicheck.tools.Unused.Unused import UnusedCodeDetector
+from replicheck.utils import compute_severity, find_files, get_file_hash
 
 
 def create_py_file(tmp_path, name, content):
@@ -164,9 +155,12 @@ def test_utils_find_todo_fixme_comments(tmp_path):
 
 
 def test_utils_find_flake8_unused(tmp_path):
+
     code = "import os\n"
     file = create_py_file(tmp_path, "unused.py", code)
-    results = find_flake8_unused([file])
+    detector = UnusedCodeDetector()
+    detector.find_unused([file])
+    results = detector.results
     assert isinstance(results, list)
 
 
