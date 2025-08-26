@@ -12,8 +12,8 @@ omit =
 
 [report]
 fail_under = 90
-
 show_missing = True
+
 
 # Lines to exclude from coverage measurement (e.g., debugging, repr methods)
 exclude_lines =
@@ -26,11 +26,3 @@ exclude_lines =
     def __ne__
     def __hash__
     # You can add more patterns as needed
-
-[html]
-# Output directory for HTML coverage reports
-directory = htmlcov
-
-[xml]
-# Output filename for XML coverage report
-output = coverage.xml

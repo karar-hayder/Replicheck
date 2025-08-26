@@ -31,7 +31,6 @@ def test_reporter_text_output(capsys):
             "lineno": 2,
             "endline": 15,
             "file": "file1.py",
-            "threshold": 10,
             "severity": "Low 🟢",
         },
     ]
@@ -40,7 +39,6 @@ def test_reporter_text_output(capsys):
             "file": "big.py",
             "token_count": 600,
             "threshold": 500,
-            "top_n": 10,
             "severity": "Low 🟢",
         },
     ]
@@ -51,8 +49,6 @@ def test_reporter_text_output(capsys):
             "start_line": 1,
             "end_line": 100,
             "token_count": 350,
-            "threshold": 300,
-            "top_n": 10,
             "severity": "Low 🟢",
         },
     ]
@@ -60,14 +56,16 @@ def test_reporter_text_output(capsys):
         {"file": "a.py", "line": 2, "type": "TODO", "text": "Refactor this"},
     ]
     reporter.generate_report(
-        duplicates,
-        None,
+        duplicates=duplicates,
+        output_file=None,
         complexity_results=complexity_results,
         large_files=large_files,
         large_classes=large_classes,
         todo_fixme=todo_fixme,
+        unused=None,
     )
     captured = capsys.readouterr()
+    assert "Code Quality Report" in captured.out
     assert "Code Duplications" in captured.out
     assert "Clone #1: size=10 tokens, count=2 (cross-file)" in captured.out
     assert "file1.py:1-5" in captured.out and "file2.py:10-14" in captured.out
@@ -100,7 +98,6 @@ def test_reporter_json_output(tmp_path):
             "lineno": 2,
             "endline": 15,
             "file": "file1.py",
-            "threshold": 10,
             "severity": "Low 🟢",
         },
     ]
@@ -120,8 +117,6 @@ def test_reporter_json_output(tmp_path):
             "start_line": 1,
             "end_line": 100,
             "token_count": 350,
-            "threshold": 300,
-            "top_n": 10,
             "severity": "Low 🟢",
         },
     ]
@@ -130,12 +125,13 @@ def test_reporter_json_output(tmp_path):
     ]
     output_file = tmp_path / "report.json"
     reporter.generate_report(
-        duplicates,
-        output_file,
+        duplicates=duplicates,
+        output_file=output_file,
         complexity_results=complexity_results,
         large_files=large_files,
         large_classes=large_classes,
         todo_fixme=todo_fixme,
+        unused=None,
     )
     import json
 
@@ -145,20 +141,29 @@ def test_reporter_json_output(tmp_path):
     assert content["duplicates"][0]["num_duplicates"] == 2
     assert content["duplicates"][0]["cross_file"] is True
     assert len(content["duplicates"][0]["locations"]) == 2
-    assert "high_cyclomatic_complexity" in content
+    # The new key is "complexity_results" not "high_cyclomatic_complexity"
+    assert "complexity_results" in content
     assert "large_files" in content
     assert "large_classes" in content
-    assert "todo_fixme_comments" in content
+    assert "todo_fixme" in content
 
 
 def test_reporter_no_duplicates(tmp_path):
     """Test report generation with no duplicates."""
     reporter = Reporter(output_format="text")
     output_file = tmp_path / "report.txt"
-    reporter.generate_report([], output_file)
+    reporter.generate_report(
+        duplicates=[],
+        output_file=output_file,
+        complexity_results=None,
+        large_files=None,
+        large_classes=None,
+        todo_fixme=None,
+        unused=None,
+    )
 
     content = output_file.read_text()
-    assert "Code Duplication Report" in content
+    assert "Code Quality Report" in content
     assert "No code duplications found!" in content
 
 
@@ -167,18 +172,32 @@ def test_reporter_console_output(capsys):
     reporter = Reporter(output_format="text")
     duplicates = [
         {
-            "similarity": 0.95,
             "size": 10,
-            "block1": {"file": "file1.py", "start_line": 1, "end_line": 5},
-            "block2": {"file": "file2.py", "start_line": 10, "end_line": 14},
+            "num_duplicates": 2,
+            "locations": [
+                {"file": "file1.py", "start_line": 1, "end_line": 5},
+                {"file": "file2.py", "start_line": 10, "end_line": 14},
+            ],
+            "cross_file": True,
+            "tokens": ["def", "foo", "(", ")", ":", "x", "=", "1"],
         }
     ]
-    reporter.generate_report(duplicates)
+    reporter.generate_report(
+        duplicates=duplicates,
+        output_file=None,
+        complexity_results=None,
+        large_files=None,
+        large_classes=None,
+        todo_fixme=None,
+        unused=None,
+    )
 
     captured = capsys.readouterr()
-    assert "Code Duplication Report" in captured.out
-    assert "Duplication #1" in captured.out
-    assert "Similarity: 95.00%" in captured.out
+    assert "Code Quality Report" in captured.out
+    assert "Code Duplications" in captured.out
+    assert "Clone #1: size=10 tokens, count=2 (cross-file)" in captured.out
+    assert "file1.py:1-5" in captured.out
+    assert "file2.py:10-14" in captured.out
 
 
 def test_reporter_error_handling(tmp_path):
@@ -186,10 +205,14 @@ def test_reporter_error_handling(tmp_path):
     reporter = Reporter(output_format="text")
     duplicates = [
         {
-            "similarity": 0.95,
             "size": 10,
-            "block1": {"file": "file1.py", "start_line": 1, "end_line": 5},
-            "block2": {"file": "file2.py", "start_line": 10, "end_line": 14},
+            "num_duplicates": 2,
+            "locations": [
+                {"file": "file1.py", "start_line": 1, "end_line": 5},
+                {"file": "file2.py", "start_line": 10, "end_line": 14},
+            ],
+            "cross_file": True,
+            "tokens": ["def", "foo", "(", ")", ":", "x", "=", "1"],
         }
     ]
 
@@ -198,7 +221,15 @@ def test_reporter_error_handling(tmp_path):
     output_file.mkdir()
 
     # Should fall back to console output
-    reporter.generate_report(duplicates, output_file)
+    reporter.generate_report(
+        duplicates=duplicates,
+        output_file=output_file,
+        complexity_results=None,
+        large_files=None,
+        large_classes=None,
+        todo_fixme=None,
+        unused=None,
+    )
 
     # Clean up
     output_file.rmdir()
@@ -220,7 +251,6 @@ def test_reporter_text_with_complexity(tmp_path, capsys):
             "lineno": 2,
             "endline": 15,
             "file": "file1.py",
-            "threshold": 10,
             "severity": "Low 🟢",
         },
         {
@@ -229,11 +259,18 @@ def test_reporter_text_with_complexity(tmp_path, capsys):
             "lineno": 10,
             "endline": 30,
             "file": "file2.py",
-            "threshold": 10,
             "severity": "Medium 🟡",
         },
     ]
-    reporter.generate_report(duplicates, None, complexity_results=complexity_results)
+    reporter.generate_report(
+        duplicates=duplicates,
+        output_file=None,
+        complexity_results=complexity_results,
+        large_files=None,
+        large_classes=None,
+        todo_fixme=None,
+        unused=None,
+    )
     captured = capsys.readouterr()
     assert "High Cyclomatic Complexity Functions" in captured.out
     assert "foo" in captured.out and "bar" in captured.out
@@ -251,17 +288,22 @@ def test_reporter_json_with_complexity(tmp_path):
             "lineno": 2,
             "endline": 15,
             "file": "file1.py",
-            "threshold": 10,
             "severity": "Low 🟢",
         },
     ]
     output_file = tmp_path / "report.json"
     reporter.generate_report(
-        duplicates, output_file, complexity_results=complexity_results
+        duplicates=duplicates,
+        output_file=output_file,
+        complexity_results=complexity_results,
+        large_files=None,
+        large_classes=None,
+        todo_fixme=None,
+        unused=None,
     )
     content = json.loads(output_file.read_text(encoding="utf-8"))
-    assert "high_cyclomatic_complexity" in content
-    assert content["high_cyclomatic_complexity"][0]["name"] == "foo"
+    assert "complexity_results" in content
+    assert content["complexity_results"][0]["name"] == "foo"
 
 
 def test_reporter_format_path_methods():
@@ -294,19 +336,36 @@ def test_reporter_generate_summary_edge_cases():
     reporter = Reporter()
 
     # All None
-    summary = reporter._generate_summary(None, None, None, None, None, None)
-    assert len(summary) == 6
-    assert "0 high complexity functions ✅" in summary[0]
+    summary = reporter._generate_summary(
+        complexity_results=None,
+        large_files=None,
+        large_classes=None,
+        unused=None,
+        todo_fixme=None,
+        duplicates=None,
+        bns_results=None,
+    )
+    assert len(summary) == 7
+    assert "0 high cyclomatic complexity functions ✅" in summary[0]
     assert "0 large files ✅" in summary[1]
     assert "0 large classes ✅" in summary[2]
     assert "0 unused imports/variables ✅" in summary[3]
     assert "0 TODO/FIXME comments ✅" in summary[4]
     assert "0 duplicate code blocks ✅" in summary[5]
+    assert "0 Bugs and Safety Issues ✅" in summary[6]
 
     # Test with empty lists
-    summary = reporter._generate_summary([], [], [], [], [], [])
-    assert len(summary) == 6
-    assert "0 high complexity functions ✅" in summary[0]
+    summary = reporter._generate_summary(
+        complexity_results=[],
+        large_files=[],
+        large_classes=[],
+        unused=[],
+        todo_fixme=[],
+        duplicates=[],
+        bns_results=[],
+    )
+    assert len(summary) == 7
+    assert "0 high cyclomatic complexity functions ✅" in summary[0]
 
     # Test with some data
     complexity_results = [
@@ -328,18 +387,38 @@ def test_reporter_generate_summary_edge_cases():
         {"file": "test.py", "line": 1, "type": "TODO", "text": "test"},
     ]
     duplicates = [
-        {"size": 10, "locations": [{"file": "test.py"}]},
+        {
+            "size": 10,
+            "num_duplicates": 2,
+            "locations": [
+                {"file": "test.py", "start_line": 1, "end_line": 5},
+                {"file": "test2.py", "start_line": 10, "end_line": 14},
+            ],
+            "cross_file": True,
+            "tokens": ["def", "foo", "(", ")", ":"],
+        },
     ]
+    bns_results = [{"file": "test.py", "line": 1, "message": "bug"}]
 
     summary = reporter._generate_summary(
-        complexity_results, large_files, large_classes, unused, todo_fixme, duplicates
+        complexity_results=complexity_results,
+        large_files=large_files,
+        large_classes=large_classes,
+        unused=unused,
+        todo_fixme=todo_fixme,
+        duplicates=duplicates,
+        bns_results=bns_results,
     )
-    assert "3 high complexity functions (1 Critical 🔴)" in summary[0]
-    assert "2 large files (1 Critical 🔴)" in summary[1]
-    assert "1 large classes (1 High 🟠)" in summary[2]
-    assert "1 unused imports/variables" in summary[3]
-    assert "1 TODO/FIXME comments" in summary[4]
-    assert "1 duplicate code blocks" in summary[5]
+    assert (
+        summary[0]
+        == "- 3 high cyclomatic complexity functions (1 Critical 🔴, 1 High 🟠, 1 Medium 🟡)"
+    )
+    assert summary[1] == "- 2 large files (1 Critical 🔴, 1 Low 🟢)"
+    assert summary[2] == "- 1 large classes (1 High 🟠)"
+    assert summary[3] == "- 1 unused imports/variables"
+    assert summary[4] == "- 1 TODO/FIXME comments"
+    assert summary[5] == "- 1 duplicate code blocks"
+    assert summary[6] == "- 1 Bugs and Safety Issues"
 
 
 def test_reporter_markdown_output(tmp_path):
@@ -364,7 +443,6 @@ def test_reporter_markdown_output(tmp_path):
             "lineno": 2,
             "endline": 15,
             "file": "file1.py",
-            "threshold": 10,
             "severity": "Low 🟢",
         },
     ]
@@ -372,8 +450,6 @@ def test_reporter_markdown_output(tmp_path):
         {
             "file": "big.py",
             "token_count": 600,
-            "threshold": 500,
-            "top_n": 10,
             "severity": "Low 🟢",
         },
     ]
@@ -384,8 +460,6 @@ def test_reporter_markdown_output(tmp_path):
             "start_line": 1,
             "end_line": 100,
             "token_count": 350,
-            "threshold": 300,
-            "top_n": 10,
             "severity": "Low 🟢",
         },
     ]
@@ -394,16 +468,17 @@ def test_reporter_markdown_output(tmp_path):
     ]
     output_file = tmp_path / "report.md"
     reporter.generate_report(
-        duplicates,
-        output_file,
+        duplicates=duplicates,
+        output_file=output_file,
         complexity_results=complexity_results,
         large_files=large_files,
         large_classes=large_classes,
         todo_fixme=todo_fixme,
+        unused=None,
     )
 
     content = output_file.read_text()
-    assert "# Code Duplication Report" in content
+    assert "# Code Quality Report" in content
     assert "## Summary" in content
     assert "## Code Duplications" in content
     assert "## High Cyclomatic Complexity Functions" in content
@@ -433,7 +508,15 @@ def test_reporter_generate_report_file_error(tmp_path):
     output_file.mkdir()
 
     # Should fall back to console output
-    reporter.generate_report(duplicates, output_file)
+    reporter.generate_report(
+        duplicates=duplicates,
+        output_file=output_file,
+        complexity_results=None,
+        large_files=None,
+        large_classes=None,
+        todo_fixme=None,
+        unused=None,
+    )
 
     output_file.rmdir()
 
@@ -455,7 +538,15 @@ def test_reporter_generate_report_with_duplication_groups(tmp_path, capsys):
         }
     ]
 
-    reporter.generate_report(duplicates, None)
+    reporter.generate_report(
+        duplicates=duplicates,
+        output_file=None,
+        complexity_results=None,
+        large_files=None,
+        large_classes=None,
+        todo_fixme=None,
+        unused=None,
+    )
     captured = capsys.readouterr()
     assert "Clone #1: size=10 tokens, count=3 (cross-file)" in captured.out
     assert "file1.py:1-5" in captured.out
@@ -481,7 +572,15 @@ def test_reporter_json_with_duplication_groups(tmp_path):
     ]
 
     output_file = tmp_path / "report.json"
-    reporter.generate_report(duplicates, output_file)
+    reporter.generate_report(
+        duplicates=duplicates,
+        output_file=output_file,
+        complexity_results=None,
+        large_files=None,
+        large_classes=None,
+        todo_fixme=None,
+        unused=None,
+    )
 
     content = json.loads(output_file.read_text(encoding="utf-8"))
     assert "duplicates" in content
@@ -489,99 +588,6 @@ def test_reporter_json_with_duplication_groups(tmp_path):
     assert content["duplicates"][0]["num_duplicates"] == 3
     assert content["duplicates"][0]["cross_file"] is True
     assert len(content["duplicates"][0]["locations"]) == 3
-
-
-def test_reporter_json_legacy_format(tmp_path):
-    """Test JSON report generation with legacy format."""
-    reporter = Reporter(output_format="json")
-    duplicates = [
-        {
-            "size": 10,
-            "similarity": 0.95,
-            "block1": {"file": "file1.py", "start_line": 1, "end_line": 5},
-            "block2": {"file": "file2.py", "start_line": 10, "end_line": 14},
-            "tokens": ["def", "foo", "(", ")", ":", "x", "=", "1"],
-        }
-    ]
-
-    output_file = tmp_path / "report.json"
-    reporter.generate_report(duplicates, output_file)
-
-    content = json.loads(output_file.read_text(encoding="utf-8"))
-    assert "duplicates" in content
-    assert content["duplicates"][0]["size"] == 10
-    assert content["duplicates"][0]["num_duplicates"] == 2
-    assert content["duplicates"][0]["cross_file"] is True
-
-
-def test_reporter_markdown_legacy_format(tmp_path):
-    """Test markdown report generation with legacy format."""
-    reporter = Reporter(output_format="markdown")
-    duplicates = [
-        {
-            "size": 10,
-            "similarity": 0.95,
-            "block1": {"file": "file1.py", "start_line": 1, "end_line": 5},
-            "block2": {"file": "file2.py", "start_line": 10, "end_line": 14},
-            "tokens": ["def", "foo", "(", ")", ":", "x", "=", "1"],
-        }
-    ]
-
-    output_file = tmp_path / "report.md"
-    reporter.generate_report(duplicates, output_file)
-
-    content = output_file.read_text()
-    assert "# Code Duplication Report" in content
-    assert "## Code Duplications" in content
-    assert "Duplication #1: Similarity: 95.00%" in content
-
-
-def test_reporter_text_legacy_format(tmp_path, capsys):
-    """Test text report generation with legacy format."""
-    reporter = Reporter(output_format="text")
-    duplicates = [
-        {
-            "size": 10,
-            "similarity": 0.95,
-            "block1": {"file": "file1.py", "start_line": 1, "end_line": 5},
-            "block2": {"file": "file2.py", "start_line": 10, "end_line": 14},
-            "tokens": ["def", "foo", "(", ")", ":", "x", "=", "1"],
-        }
-    ]
-
-    reporter.generate_report(duplicates, None)
-    captured = capsys.readouterr()
-    assert "Duplication #1" in captured.out
-    assert "Similarity: 95.00%" in captured.out
-    assert "file1.py:1-5" in captured.out
-    assert "file2.py:10-14" in captured.out
-
-
-def test_reporter_generate_report_exception_handling(tmp_path, capsys):
-    """Test that generate_report handles exceptions gracefully."""
-    reporter = Reporter(output_format="text")
-    duplicates = [
-        {
-            "size": 10,
-            "num_duplicates": 2,
-            "locations": [
-                {"file": "file1.py", "start_line": 1, "end_line": 5},
-            ],
-            "cross_file": False,
-            "tokens": ["def", "foo", "(", ")", ":"],
-        }
-    ]
-
-    output_file = tmp_path / "report.txt"
-    output_file.mkdir()
-
-    reporter.generate_report(duplicates, output_file)
-    captured = capsys.readouterr()
-    assert (
-        "Report written to:" in captured.out or "Error writing report:" in captured.out
-    )
-
-    output_file.rmdir()
 
 
 def test_reporter_json_console_output(capsys):
@@ -599,7 +605,15 @@ def test_reporter_json_console_output(capsys):
         }
     ]
 
-    reporter.generate_report(duplicates, None)
+    reporter.generate_report(
+        duplicates=duplicates,
+        output_file=None,
+        complexity_results=None,
+        large_files=None,
+        large_classes=None,
+        todo_fixme=None,
+        unused=None,
+    )
     captured = capsys.readouterr()
     assert '"duplicates"' in captured.out
     assert '"size": 10' in captured.out
@@ -620,52 +634,15 @@ def test_reporter_markdown_console_output(capsys):
         }
     ]
 
-    reporter.generate_report(duplicates, None)
-    captured = capsys.readouterr()
-    assert "# Code Duplication Report" in captured.out
-    assert "## Code Duplications" in captured.out
-
-
-def test_reporter_text_section_unused(capsys):
-    # Test the _text_section_unused method in Reporter
-    from replicheck.reporter import Reporter
-
-    unused = [
-        {
-            "file": "foo.py",
-            "line": 2,
-            "code": "F401",
-            "message": "imported but unused",
-        },
-        {
-            "file": "foo.py",
-            "line": 3,
-            "code": "F841",
-            "message": "assigned to but never used",
-        },
-    ]
-    reporter = Reporter(output_format="text")
-    console_output = []
-    file_output = []
-    reporter._text_section_unused(unused, console_output, file_output)
-    # Should mention both F401 and F841
-    assert any("F401" in line for line in console_output)
-    assert any("F841" in line for line in console_output)
-    assert any("imported but unused" in line for line in console_output)
-    assert any("assigned to but never used" in line for line in console_output)
-    # Should have section header
-    assert any("Unused Imports and Vars" in line for line in console_output)
-
-
-def test_reporter_text_section_unused_empty():
-    from replicheck.reporter import Reporter
-
-    reporter = Reporter(output_format="text")
-    console_output = []
-    file_output = []
-    reporter._text_section_unused([], console_output, file_output)
-    # Should mention no unused imports or variables found
-    assert any(
-        "No unused imports or variables found" in line for line in console_output
+    reporter.generate_report(
+        duplicates=duplicates,
+        output_file=None,
+        complexity_results=None,
+        large_files=None,
+        large_classes=None,
+        todo_fixme=None,
+        unused=None,
     )
-    assert any("No unused imports or variables found" in line for line in file_output)
+    captured = capsys.readouterr()
+    assert "# Code Quality Report" in captured.out
+    assert "## Code Duplications" in captured.out

@@ -2,7 +2,7 @@
 Tests for the code detector functionality.
 """
 
-from replicheck.detector import DuplicateDetector
+from replicheck.tools.Duplication.Duplication import DuplicateDetector
 
 
 def test_find_duplicates():

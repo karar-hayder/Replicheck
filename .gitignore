@@ -264,3 +264,5 @@ log/
 Thumbs.db
 PROCEDURE.md
 test-scan.txt
+test-scan.json
+test-scan.md

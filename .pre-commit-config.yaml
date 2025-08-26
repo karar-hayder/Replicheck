@@ -10,14 +10,6 @@ repos:
 
   - repo: local
     hooks:
-      - id: pytest
-        name: Run pytest with coverage
-        entry: bash -c './.venv/Scripts/python.exe -m pytest --cov --cov-report=html'
-        language: python
-        types: [python]
-        pass_filenames: false
-        files: ^.*\.py$
-
       - id: black-isort
         name: black + isort (local)
         entry: >
@@ -37,6 +29,14 @@ repos:
             ./.venv/Scripts/python.exe -m flake8 . -v
           "
         language: system
+        types: [python]
+        pass_filenames: false
+        files: ^.*\.py$
+
+      - id: pytest
+        name: Run pytest with coverage
+        entry: bash -c './.venv/Scripts/python.exe -m pytest --cov --cov-report=term'
+        language: python
         types: [python]
         pass_filenames: false
         files: ^.*\.py$
