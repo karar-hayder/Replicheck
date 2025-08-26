@@ -349,7 +349,9 @@ class Reporter:
                     file_output.append(line)
             else:
                 console_output.append(
-                    self._text_section_header("No issues in @BNS.py found.", Fore.GREEN)
+                    self._text_section_header(
+                        "No Bugs and Safety Issues found.", Fore.GREEN
+                    )
                 )
                 file_output.append("No Bugs and Safety Issues found.")
             console_output.append("")
@@ -461,7 +463,7 @@ class Reporter:
             "top_n_large": large_files[0].get("top_n", "N/A") if large_files else None,
             "unused": unused or [],
             "todo_fixme_comments": todo_fixme or [],
-            "bugs_n_safety.py": bns_results or [],
+            "bugs_n_safety": bns_results or [],
         }
         json_str = json.dumps(report, indent=2)
         if output_file:
