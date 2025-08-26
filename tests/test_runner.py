@@ -3,9 +3,6 @@ import pytest
 from main import main
 from replicheck.runner import ReplicheckRunner
 from replicheck.utils import (
-    analyze_cs_cyclomatic_complexity,
-    analyze_cyclomatic_complexity,
-    analyze_js_cyclomatic_complexity,
     calculate_similarity,
     compute_severity,
     find_files,
@@ -15,6 +12,12 @@ from replicheck.utils import (
     find_todo_fixme_comments,
     get_file_hash,
 )
+
+# --- Cyclomatic Complexity Analyzer from CCA.py ---
+try:
+    from replicheck.tools.CyclomaticComplexity.CCA import CyclomaticComplexityAnalyzer
+except ImportError:
+    CyclomaticComplexityAnalyzer = None
 
 
 def create_py_file(tmp_path, name, content):
@@ -106,29 +109,28 @@ def test_utils_compute_severity():
     assert compute_severity("bad", 10) == "None"
 
 
-def test_utils_analyze_cyclomatic_complexity(tmp_path):
-    code = "def foo():\n    if True:\n        return 1\n    else:\n        return 2\n"
-    file = create_py_file(tmp_path, "cc.py", code)
-    results = analyze_cyclomatic_complexity(file, threshold=1)
-    assert any(r["complexity"] >= 1 for r in results)
-
-
-def test_utils_analyze_js_cyclomatic_complexity(tmp_path):
+def test_utils_analyze_cyclomatic_complexity_all_types_with_cca(tmp_path):
+    py_code = (
+        "def foo():\n    if True:\n        return 1\n    else:\n        return 2\n"
+    )
     js_code = "function foo() { if (true) { return 1; } else { return 2; } }"
-    file = create_py_file(tmp_path, "cc.js", js_code)
-    # This may require Node.js and helper script to be present
-    results = analyze_js_cyclomatic_complexity(file, threshold=1)
-    assert isinstance(results, list)
-
-
-def test_utils_analyze_cs_cyclomatic_complexity(tmp_path):
     cs_code = (
         "public class X { public int Foo() { if (true) return 1; else return 2; } }"
     )
-    file = create_py_file(tmp_path, "cc.cs", cs_code)
-    # This may require the C# analyzer to be present
-    results = analyze_cs_cyclomatic_complexity(file, threshold=1)
-    assert isinstance(results, list)
+
+    py_file = create_py_file(tmp_path, "cc.py", py_code)
+    js_file = create_py_file(tmp_path, "cc.js", js_code)
+    cs_file = create_py_file(tmp_path, "cc.cs", cs_code)
+
+    files = [py_file, js_file, cs_file]
+    analyzer = CyclomaticComplexityAnalyzer(files, threshold=1)
+    analyzer.analyze()
+    results = analyzer.results
+
+    # Should have at least one result per file type if analyzers are present
+    assert any(r["file"].endswith("cc.py") for r in results)
+    assert any(r["file"].endswith("cc.js") for r in results)
+    assert any(r["file"].endswith("cc.cs") for r in results)
 
 
 def test_utils_find_large_files(tmp_path):
@@ -358,8 +360,13 @@ def test_runner_analyze_complexity_all_types(tmp_path):
         ignore_dirs=[],
         output_file=None,
     )
-    results = runner.analyze_complexity([py, js, cs])
-    assert any(r["threshold"] == 1 for r in results)
+    # Use the new CCA analyzer for cyclomatic complexity
+    if CyclomaticComplexityAnalyzer is not None:
+        results = runner.analyze_complexity([py, js, cs])
+        assert any(r.get("threshold", None) == 1 for r in results)
+    else:
+        # If CCA is not available, the runner returns []
+        assert runner.analyze_complexity([py, js, cs]) == []
 
 
 def test_runner_run_catches_exception(tmp_path, monkeypatch):

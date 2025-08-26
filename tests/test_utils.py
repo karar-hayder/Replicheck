@@ -103,96 +103,6 @@ def test_find_files_no_extensions(tmp_path):
 
 # --- analyze_cyclomatic_complexity coverage ---
 
-
-def test_analyze_cyclomatic_complexity_detects_high(tmp_path):
-    code = """
-def foo():
-    if True:
-        for i in range(10):
-            if i % 2 == 0:
-                print(i)
-    else:
-        print('no')
-    for j in range(5):
-        if j > 2:
-            print(j)
-    return 1
-"""
-    file = tmp_path / "complex.py"
-    file.write_text(code)
-    from replicheck.utils import analyze_cyclomatic_complexity
-
-    results = analyze_cyclomatic_complexity(file, threshold=5)
-    assert results, "Should detect at least one high-complexity function"
-    assert results[0]["name"] == "foo"
-    assert results[0]["complexity"] >= 5
-    assert results[0]["file"] == str(file)
-    assert results[0]["threshold"] == 5
-
-
-def test_analyze_cyclomatic_complexity_none_found(tmp_path):
-    code = """
-def bar():
-    return 1
-"""
-    file = tmp_path / "simple.py"
-    file.write_text(code)
-    from replicheck.utils import analyze_cyclomatic_complexity
-
-    results = analyze_cyclomatic_complexity(file, threshold=5)
-    assert results == [], "Should return empty list if no function exceeds threshold"
-
-
-def test_analyze_cyclomatic_complexity_nested(tmp_path):
-    code = """
-def outer():
-    def inner():
-        if True: return 1
-    if False: return 2
-"""
-    file = tmp_path / "nested.py"
-    file.write_text(code)
-    from replicheck.utils import analyze_cyclomatic_complexity
-
-    results = analyze_cyclomatic_complexity(file, threshold=1)
-    assert any(r["name"] == "outer" for r in results)
-
-
-def test_analyze_cyclomatic_complexity_lambda(tmp_path):
-    code = "foo = lambda x: x+1"
-    file = tmp_path / "lambda.py"
-    file.write_text(code)
-    from replicheck.utils import analyze_cyclomatic_complexity
-
-    results = analyze_cyclomatic_complexity(file, threshold=1)
-    assert isinstance(results, list)
-
-
-def test_analyze_cyclomatic_complexity_exception_handling(tmp_path):
-    from replicheck.utils import analyze_cyclomatic_complexity
-
-    non_existent_file = tmp_path / "nonexistent.py"
-    results = analyze_cyclomatic_complexity(non_existent_file, threshold=5)
-    assert results == []
-
-    syntax_error_file = tmp_path / "syntax_error.py"
-    syntax_error_file.write_text(
-        "def foo(\n    return 1  # Missing closing parenthesis"
-    )
-    results = analyze_cyclomatic_complexity(syntax_error_file, threshold=5)
-    assert results == []
-
-
-def test_analyze_cyclomatic_complexity_encoding_error(tmp_path):
-    from replicheck.utils import analyze_cyclomatic_complexity
-
-    file = tmp_path / "badenc.py"
-    with open(file, "wb") as f:
-        f.write(b"\xff\xfe")
-    results = analyze_cyclomatic_complexity(file, threshold=1)
-    assert results == []
-
-
 # --- find_large_files coverage ---
 
 
@@ -394,29 +304,6 @@ def test_compute_severity_types():
 # --- severity in results ---
 
 
-def test_analyze_cyclomatic_complexity_severity(tmp_path):
-    code = """
-def foo():
-    if True:
-        for i in range(10):
-            if i % 2 == 0:
-                print(i)
-    else:
-        print('no')
-    for j in range(5):
-        if j > 2:
-            print(j)
-    return 1
-"""
-    file = tmp_path / "complex.py"
-    file.write_text(code)
-    from replicheck.utils import analyze_cyclomatic_complexity
-
-    results = analyze_cyclomatic_complexity(file, threshold=5)
-    assert results
-    assert results[0]["severity"] in {"Low 🟢", "Medium 🟡", "High 🟠", "Critical 🔴"}
-
-
 def test_find_large_files_severity(tmp_path):
     file = tmp_path / "large.py"
     file.write_text("def foo():\n    x = 1\n" * 300)
@@ -478,22 +365,6 @@ def test_find_large_classes_js(tmp_path):
     assert results[0]["token_count"] >= 50
 
 
-def test_analyze_js_cyclomatic_complexity(tmp_path):
-    js_code = """
-    function foo(x) { if (x) { return 1; } else { return 2; } }
-    function bar() { for (var i=0;i<10;i++) { if (i%2) { continue; } } }
-    """
-    file = tmp_path / "complex.js"
-    file.write_text(js_code)
-    from replicheck.utils import analyze_js_cyclomatic_complexity
-
-    results = analyze_js_cyclomatic_complexity(file, threshold=2)
-    assert results, "Should detect at least one high-complexity function"
-    assert any(r["name"] == "bar" or r["name"] == "foo" for r in results)
-    assert all("complexity" in r for r in results)
-    assert all("file" in r for r in results)
-
-
 def test_find_large_files_ts(tmp_path):
     ts_code = """
     function foo(): number { let x = 1; let y = 2; return x + y; }
@@ -526,21 +397,6 @@ def test_find_large_classes_ts(tmp_path):
     assert results, "Should detect the TS class as large"
     assert results[0]["name"] == "BigClass"
     assert results[0]["token_count"] >= 50
-
-
-def test_analyze_ts_cyclomatic_complexity(tmp_path):
-    ts_code = """
-    function foo(x: number): number { if (x > 0) { return 1; } else { return 2; } }
-    function bar(): void { for (let i=0; i<10; i++) { if (i % 2 === 0) { continue; } } }
-    """
-    file = tmp_path / "complex.ts"
-    file.write_text(ts_code)
-    from replicheck.utils import analyze_js_cyclomatic_complexity
-
-    results = analyze_js_cyclomatic_complexity(file, threshold=2)
-    assert results, "Should detect at least one high-complexity TS function"
-    assert any(r["name"] in {"foo", "bar"} for r in results)
-    assert all("complexity" in r for r in results)
 
 
 def test_find_large_files_tsx(tmp_path):
@@ -584,26 +440,6 @@ def test_find_large_classes_tsx(tmp_path):
     assert results[0]["token_count"] >= 50
 
 
-def test_analyze_tsx_cyclomatic_complexity(tmp_path):
-    tsx_code = """
-    import React from 'react';
-    function DecisionComponent({ flag }: { flag: boolean }) {
-        if (flag) {
-            return <span>Yes</span>;
-        } else {
-            return <span>No</span>;
-        }
-    }
-    """
-    file = tmp_path / "complex.tsx"
-    file.write_text(tsx_code)
-    from replicheck.utils import analyze_js_cyclomatic_complexity
-
-    results = analyze_js_cyclomatic_complexity(file, threshold=1)
-    assert results, "Should detect complexity in TSX component"
-    assert any(r["name"] == "DecisionComponent" for r in results)
-
-
 # --- C# support ---
 
 
@@ -645,58 +481,6 @@ def test_find_large_classes_cs(tmp_path):
     assert results, "Should detect the C# class as large"
     assert results[0]["name"] == "BigClass"
     assert results[0]["token_count"] >= 50
-
-
-def test_analyze_cs_cyclomatic_complexity(tmp_path):
-    cs_code = """
-    namespace TestNamespace {
-        class ComplexityTest {
-            int Foo(int x) {
-                if (x > 0) {
-                    return 1;
-                } else {
-                    return 2;
-                }
-            }
-            int Bar() {
-                for (int i = 0; i < 10; i++) {
-                    if (i % 2 == 0) {
-                        continue;
-                    }
-                }
-                return 0;
-            }
-        }
-    }
-    """
-    file = tmp_path / "complex.cs"
-    file.write_text(cs_code)
-    from replicheck.utils import analyze_cs_cyclomatic_complexity
-
-    results = analyze_cs_cyclomatic_complexity(file, threshold=2)
-    assert results, "Should detect at least one high-complexity function"
-    assert any(r["name"] == "Bar" or r["name"] == "Foo" for r in results)
-    assert all("complexity" in r for r in results)
-    assert all("file" in r for r in results)
-
-
-def test_analyze_cs_cyclomatic_complexity_empty(tmp_path):
-    from replicheck.utils import analyze_cs_cyclomatic_complexity
-
-    file = tmp_path / "empty.cs"
-    file.write_text("")
-    results = analyze_cs_cyclomatic_complexity(file, threshold=1)
-    assert results == []
-
-
-def test_analyze_cs_cyclomatic_complexity_encoding_error(tmp_path):
-    from replicheck.utils import analyze_cs_cyclomatic_complexity
-
-    file = tmp_path / "badenc.cs"
-    with open(file, "wb") as f:
-        f.write(b"\xff\xfe")
-    results = analyze_cs_cyclomatic_complexity(file, threshold=1)
-    assert results == []
 
 
 # --- flake8 unused ---

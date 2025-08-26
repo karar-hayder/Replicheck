@@ -4,15 +4,18 @@ from replicheck.parser import CodeParser
 from replicheck.reporter import Reporter
 from replicheck.tools.Duplication.Duplication import DuplicateDetector
 from replicheck.utils import (
-    analyze_cs_cyclomatic_complexity,
-    analyze_cyclomatic_complexity,
-    analyze_js_cyclomatic_complexity,
     find_files,
     find_flake8_unused,
     find_large_classes,
     find_large_files,
     find_todo_fixme_comments,
 )
+
+# --- Cyclomatic Complexity Analysis ---
+try:
+    from replicheck.tools.CyclomaticComplexity.CCA import CyclomaticComplexityAnalyzer
+except ImportError:
+    CyclomaticComplexityAnalyzer = None
 
 # --- Bugs and Safety Issues ---
 try:
@@ -34,28 +37,19 @@ class ReplicheckRunner:
                 setattr(self, k, v)
 
     def analyze_complexity(self, files):
-        high_complexity = []
-        for file in files:
-            suffix = str(file).split(".")[-1].lower()
-            if suffix == "py":
-                for result in analyze_cyclomatic_complexity(
-                    file, threshold=self.complexity_threshold
-                ):
-                    result["threshold"] = self.complexity_threshold
-                    high_complexity.append(result)
-            elif suffix in ["js", "jsx", "ts", "tsx"]:
-                for result in analyze_js_cyclomatic_complexity(
-                    file, threshold=self.complexity_threshold
-                ):
-                    result["threshold"] = self.complexity_threshold
-                    high_complexity.append(result)
-            elif suffix == "cs":
-                for result in analyze_cs_cyclomatic_complexity(
-                    file, threshold=self.complexity_threshold
-                ):
-                    result["threshold"] = self.complexity_threshold
-                    high_complexity.append(result)
-        return high_complexity
+        """
+        Use CyclomaticComplexityAnalyzer from CCA.py to analyze all files.
+        """
+        if CyclomaticComplexityAnalyzer is None:
+            return []
+        analyzer = CyclomaticComplexityAnalyzer(
+            files, threshold=self.complexity_threshold
+        )
+        analyzer.analyze()
+        # Optionally, add threshold to each result for compatibility
+        for result in analyzer.results:
+            result["threshold"] = self.complexity_threshold
+        return analyzer.results
 
     def analyze_large_files(self, files):
         large_files = find_large_files(
