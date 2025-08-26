@@ -3,13 +3,9 @@ from pathlib import Path
 from replicheck.parser import CodeParser
 from replicheck.reporter import Reporter
 from replicheck.tools.Duplication.Duplication import DuplicateDetector
-from replicheck.utils import (
-    find_files,
-    find_flake8_unused,
-    find_large_classes,
-    find_large_files,
-    find_todo_fixme_comments,
-)
+from replicheck.tools.LargeDetection.LC import LargeClassDetector
+from replicheck.tools.LargeDetection.LF import LargeFileDetector
+from replicheck.utils import find_files, find_flake8_unused, find_todo_fixme_comments
 
 # --- Cyclomatic Complexity Analysis ---
 try:
@@ -51,30 +47,24 @@ class ReplicheckRunner:
             result["threshold"] = self.complexity_threshold
         return analyzer.results
 
-    def analyze_large_files(self, files):
-        large_files = find_large_files(
+    def analyze_large_files(self, files) -> list:
+        detector = LargeFileDetector()
+        detector.find_large_files(
             files, token_threshold=self.large_file_threshold, top_n=self.top_n_large
         )
-        large_files = sorted(large_files, key=lambda x: x["token_count"], reverse=True)
+        large_files = detector.results
         if self.top_n_large > 0:
             large_files = large_files[: self.top_n_large]
         return large_files
 
-    def analyze_large_classes(self, files):
-        large_classes = []
-        for file in files:
-            suffix = str(file).split(".")[-1].lower()
-            if suffix in ["py", "js", "jsx", "cs", "ts", "tsx"]:
-                large_classes.extend(
-                    find_large_classes(
-                        file,
-                        token_threshold=self.large_class_threshold,
-                        top_n=self.top_n_large,
-                    )
-                )
-        large_classes = sorted(
-            large_classes, key=lambda x: x["token_count"], reverse=True
+    def analyze_large_classes(self, files) -> list:
+        detector = LargeClassDetector()
+        detector.find_large_classes(
+            files,
+            token_threshold=self.large_class_threshold,
+            top_n=self.top_n_large,
         )
+        large_classes = detector.results
         if self.top_n_large > 0:
             large_classes = large_classes[: self.top_n_large]
         return large_classes

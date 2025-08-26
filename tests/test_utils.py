@@ -101,114 +101,6 @@ def test_find_files_no_extensions(tmp_path):
     assert any(f.name == "a.py" for f in files)
 
 
-# --- analyze_cyclomatic_complexity coverage ---
-
-# --- find_large_files coverage ---
-
-
-def test_find_large_files(tmp_path):
-    file = tmp_path / "large.py"
-    file.write_text("def foo():\n    x = 1\n" * 300)
-    from replicheck.utils import find_large_files
-
-    results = find_large_files([file], token_threshold=500)
-    assert results, "Should detect the file as large"
-    assert results[0]["file"] == str(file)
-    assert results[0]["token_count"] >= 500
-    assert results[0]["threshold"] == 500
-    assert results[0]["top_n"] is None or isinstance(results[0]["top_n"], int)
-
-
-def test_find_large_files_empty(tmp_path):
-    from replicheck.utils import find_large_files
-
-    results = find_large_files([], token_threshold=10)
-    assert results == []
-
-
-def test_find_large_files_exception_handling(tmp_path):
-    from replicheck.utils import find_large_files
-
-    non_existent_file = tmp_path / "nonexistent.py"
-    results = find_large_files([non_existent_file], token_threshold=500)
-    assert results == []
-
-    non_python_file = tmp_path / "test.txt"
-    non_python_file.write_text("This is not Python code")
-    results = find_large_files([non_python_file], token_threshold=500)
-    assert results == []
-
-    syntax_error_file = tmp_path / "syntax_error.py"
-    syntax_error_file.write_text(
-        "def foo(\n    return 1  # Missing closing parenthesis"
-    )
-    results = find_large_files([syntax_error_file], token_threshold=500)
-    assert isinstance(results, list)
-
-
-def test_find_large_files_encoding_error(tmp_path):
-    from replicheck.utils import find_large_files
-
-    file = tmp_path / "badenc.py"
-    with open(file, "wb") as f:
-        f.write(b"\xff\xfe")
-    results = find_large_files([file], token_threshold=1)
-    assert isinstance(results, list)
-
-
-# --- find_large_classes coverage ---
-
-
-def test_find_large_classes(tmp_path):
-    class_code = "class Big:\n    def foo(self):\n        x = 1\n" + (
-        "    def bar(self):\n        y = 2\n" * 150
-    )
-    file = tmp_path / "bigclass.py"
-    file.write_text(class_code)
-    from replicheck.utils import find_large_classes
-
-    results = find_large_classes(file, token_threshold=300)
-    assert results, "Should detect the class as large"
-    assert results[0]["name"] == "Big"
-    assert results[0]["token_count"] >= 300
-    assert results[0]["threshold"] == 300
-    assert results[0]["top_n"] is None or isinstance(results[0]["top_n"], int)
-
-
-def test_find_large_classes_empty(tmp_path):
-    from replicheck.utils import find_large_classes
-
-    file = tmp_path / "empty.py"
-    file.write_text("")
-    results = find_large_classes(file, token_threshold=1)
-    assert results == []
-
-
-def test_find_large_classes_exception_handling(tmp_path):
-    from replicheck.utils import find_large_classes
-
-    non_existent_file = tmp_path / "nonexistent.py"
-    results = find_large_classes(non_existent_file, token_threshold=300)
-    assert results == []
-
-    syntax_error_file = tmp_path / "syntax_error.py"
-    syntax_error_file.write_text(
-        "class Test(\n    def __init__(self):\n        pass  # Missing closing parenthesis"
-    )
-    results = find_large_classes(syntax_error_file, token_threshold=300)
-    assert results == []
-
-
-def test_find_large_classes_encoding_error(tmp_path):
-    from replicheck.utils import find_large_classes
-
-    file = tmp_path / "badenc.py"
-    with open(file, "wb") as f:
-        f.write(b"\xff\xfe")
-    results = find_large_classes(file, token_threshold=1)
-    assert isinstance(results, list)
-
-
 # --- find_todo_fixme_comments coverage ---
 
 
@@ -305,182 +197,32 @@ def test_compute_severity_types():
 
 
 def test_find_large_files_severity(tmp_path):
+    from replicheck.tools.LargeDetection.LF import LargeFileDetector
+
     file = tmp_path / "large.py"
     file.write_text("def foo():\n    x = 1\n" * 300)
-    from replicheck.utils import find_large_files
 
-    results = find_large_files([file], token_threshold=500)
+    detector = LargeFileDetector()
+    detector.find_large_files([file], token_threshold=500)
+    results = detector.results
     assert results
     assert results[0]["severity"] in {"Low 🟢", "Medium 🟡", "High 🟠", "Critical 🔴"}
 
 
 def test_find_large_classes_severity(tmp_path):
+    from replicheck.tools.LargeDetection.LC import LargeClassDetector
+
     class_code = "class Big:\n    def foo(self):\n        x = 1\n" + (
         "    def bar(self):\n        y = 2\n" * 150
     )
     file = tmp_path / "bigclass.py"
     file.write_text(class_code)
-    from replicheck.utils import find_large_classes
 
-    results = find_large_classes(file, token_threshold=300)
+    detector = LargeClassDetector()
+    detector.find_large_classes([file], token_threshold=300)
+    results = detector.results
     assert results
     assert results[0]["severity"] in {"Low 🟢", "Medium 🟡", "High 🟠", "Critical 🔴"}
-
-
-# --- JS/TS/TSX/CS support ---
-
-
-def test_find_large_files_js(tmp_path):
-    js_code = """
-    function foo() { var x = 1; var y = 2; }
-    class Bar { method() { return 42; } }
-    // Add more tokens to exceed threshold
-    """ + (
-        "var a = 1;\n" * 500
-    )
-    file = tmp_path / "big.js"
-    file.write_text(js_code)
-    from replicheck.utils import find_large_files
-
-    results = find_large_files([file], token_threshold=50)
-    assert results, "Should detect the JS file as large"
-    assert results[0]["file"].endswith("big.js")
-    assert results[0]["token_count"] >= 50
-
-
-def test_find_large_classes_js(tmp_path):
-    methods = "\n".join([f"  method{i}() {{ var x = {i}; }}" for i in range(60)])
-    js_code = f"""
-    class BigClass {{
-    {methods}
-    }}
-    """
-    file = tmp_path / "bigclass.js"
-    file.write_text(js_code)
-    from replicheck.utils import find_large_classes
-
-    results = find_large_classes(file, token_threshold=50)
-    assert results, "Should detect the JS class as large"
-    assert results[0]["name"] == "BigClass"
-    assert results[0]["token_count"] >= 50
-
-
-def test_find_large_files_ts(tmp_path):
-    ts_code = """
-    function foo(): number { let x = 1; let y = 2; return x + y; }
-    class Bar { method(): number { return 42; } }
-    """ + (
-        "let a: number = 1;\n" * 500
-    )
-    file = tmp_path / "big.ts"
-    file.write_text(ts_code)
-    from replicheck.utils import find_large_files
-
-    results = find_large_files([file], token_threshold=50)
-    assert results, "Should detect the TS file as large"
-    assert results[0]["file"].endswith("big.ts")
-    assert results[0]["token_count"] >= 50
-
-
-def test_find_large_classes_ts(tmp_path):
-    methods = "\n".join([f"  method{i}(): void {{ let x = {i}; }}" for i in range(60)])
-    ts_code = f"""
-    class BigClass {{
-    {methods}
-    }}
-    """
-    file = tmp_path / "bigclass.ts"
-    file.write_text(ts_code)
-    from replicheck.utils import find_large_classes
-
-    results = find_large_classes(file, token_threshold=50)
-    assert results, "Should detect the TS class as large"
-    assert results[0]["name"] == "BigClass"
-    assert results[0]["token_count"] >= 50
-
-
-def test_find_large_files_tsx(tmp_path):
-    tsx_code = """
-    import React from 'react';
-    const Component = ({ name }: { name: string }) => <div>Hello {name}</div>;
-    """ + (
-        "const x = <span>text</span>;\n" * 500
-    )
-    file = tmp_path / "big.tsx"
-    file.write_text(tsx_code)
-    from replicheck.utils import find_large_files
-
-    results = find_large_files([file], token_threshold=50)
-    assert results, "Should detect the TSX file as large"
-    assert results[0]["file"].endswith("big.tsx")
-    assert results[0]["token_count"] >= 50
-
-
-def test_find_large_classes_tsx(tmp_path):
-    methods = "\n".join(
-        [f"  method{i}(): void {{ console.log({i}); }}" for i in range(60)]
-    )
-    tsx_code = f"""
-    import React from 'react';
-
-    class BigComponent extends React.Component {{
-    {methods}
-    render() {{
-        return <div>Big Component</div>;
-    }}
-    }}
-    """
-    file = tmp_path / "bigcomponent.tsx"
-    file.write_text(tsx_code)
-    from replicheck.utils import find_large_classes
-
-    results = find_large_classes(file, token_threshold=50)
-    assert results, "Should detect the TSX class as large"
-    assert results[0]["name"] == "BigComponent"
-    assert results[0]["token_count"] >= 50
-
-
-# --- C# support ---
-
-
-def test_find_large_files_cs(tmp_path):
-    cs_code = (
-        """
-using System;
-namespace TestNamespace {
-    class SmallClass { void SmallMethod() { int x = 1; } }
-
-"""
-        + ("    int a = 1;\n" * 100)
-        + "}\n"
-    )
-    file = tmp_path / "big.cs"
-    file.write_text(cs_code)
-    from replicheck.utils import find_large_files
-
-    results = find_large_files([file], token_threshold=50)
-    assert results, "Should detect the C# file as large"
-    assert results[0]["file"].endswith("big.cs")
-    assert results[0]["token_count"] >= 50
-
-
-def test_find_large_classes_cs(tmp_path):
-    methods = "\n".join([f"  void Method{i}() {{ int x = {i}; }}" for i in range(60)])
-    cs_code = f"""
-    namespace TestNamespace {{
-        class BigClass {{
-        {methods}
-        }}
-    }}
-    """
-    file = tmp_path / "bigclass.cs"
-    file.write_text(cs_code)
-    from replicheck.utils import find_large_classes
-
-    results = find_large_classes(file, token_threshold=50)
-    assert results, "Should detect the C# class as large"
-    assert results[0]["name"] == "BigClass"
-    assert results[0]["token_count"] >= 50
 
 
 # --- flake8 unused ---
