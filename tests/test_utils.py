@@ -35,6 +35,20 @@ def test_get_file_hash_binary(tmp_path):
     assert isinstance(result, str) or result is None
 
 
+def test_get_file_hash_permission_error(tmp_path, monkeypatch):
+    # Simulate a permission error when opening the file
+    from replicheck.utils import get_file_hash
+
+    file = tmp_path / "perm.txt"
+    file.write_text("data")
+
+    def raise_exc(*a, **k):
+        raise PermissionError("nope")
+
+    monkeypatch.setattr("builtins.open", raise_exc)
+    assert get_file_hash(file) is None
+
+
 # --- find_files coverage ---
 
 
@@ -71,57 +85,23 @@ def test_find_files_no_extensions(tmp_path):
     assert any(f.name == "a.py" for f in files)
 
 
-# --- find_todo_fixme_comments coverage ---
+def test__get_ignored_dirs_and__is_in_ignored_dirs():
+    from pathlib import Path
 
+    from replicheck.utils import _get_ignored_dirs, _is_in_ignored_dirs
 
-def test_find_todo_fixme_comments(tmp_path):
-    code = """
-# TODO: Refactor this function
-# FIXME this is broken
-# just a comment
-# todo lowercase
-# fixme: also lowercase
-    """
-    file = tmp_path / "todo.py"
-    file.write_text(code)
-    from replicheck.utils import find_todo_fixme_comments
+    # Default venv dirs
+    ignored = _get_ignored_dirs()
+    assert ".venv" in ignored and "venv" in ignored
+    # Add custom
+    ignored2 = _get_ignored_dirs(["foo", "bar"])
+    assert "foo" in ignored2 and "bar" in ignored2
 
-    results = find_todo_fixme_comments([file])
-    assert len(results) == 4
-    types = {r["type"] for r in results}
-    assert "TODO" in types and "FIXME" in types
-    texts = [r["text"] for r in results]
-    assert any("Refactor" in t for t in texts)
-    assert any("broken" in t for t in texts)
-
-
-def test_find_todo_fixme_comments_exception_handling(tmp_path):
-    from replicheck.utils import find_todo_fixme_comments
-
-    non_existent_file = tmp_path / "nonexistent.py"
-    results = find_todo_fixme_comments([non_existent_file])
-    assert results == []
-
-    non_python_file = tmp_path / "test.txt"
-    non_python_file.write_text("# TODO: This won't be found")
-    results = find_todo_fixme_comments([non_python_file])
-    assert results == []
-
-    encoding_error_file = tmp_path / "encoding_error.py"
-    with open(encoding_error_file, "wb") as f:
-        f.write(b"# TODO: This has invalid encoding \xff\xfe")
-    results = find_todo_fixme_comments([encoding_error_file])
-    assert isinstance(results, list)
-
-
-def test_find_todo_fixme_comments_variants(tmp_path):
-    from replicheck.utils import find_todo_fixme_comments
-
-    code = "# ToDo: mixed case\n# FixMe: mixed case\n# TODO\n# FIXME\n"
-    file = tmp_path / "variants.py"
-    file.write_text(code)
-    results = find_todo_fixme_comments([file])
-    assert len(results) == 4
+    # _is_in_ignored_dirs
+    p1 = Path("foo/bar/baz.py")
+    p2 = Path("src/main.py")
+    assert _is_in_ignored_dirs(p1, {"foo"})
+    assert not _is_in_ignored_dirs(p2, {"foo"})
 
 
 # --- compute_severity coverage ---
@@ -161,6 +141,17 @@ def test_compute_severity_types():
     assert compute_severity(20, None) == "None"
     assert compute_severity("abc", 10) == "None"
     assert compute_severity(10, "xyz") == "None"
+
+
+def test_compute_severity_zero_and_negative_threshold():
+    from replicheck.utils import compute_severity
+
+    # threshold equal 0
+    assert compute_severity(10, 0) == "None"
+    # value less than 0
+    assert compute_severity(-1, 10) == "None"
+    # threshold more than 0
+    assert compute_severity(10, -1) == "None"
 
 
 # --- severity in results ---
@@ -248,3 +239,53 @@ def test_find_flake8_unused_encoding_error(tmp_path):
         f.write(b"\xff\xfe")
     results = find_flake8_unused([py_file])
     assert isinstance(results, list)
+
+
+def test_find_flake8_unused_ignore_dirs(tmp_path, monkeypatch):
+    # Test that ignore_dirs is passed as --exclude
+    from replicheck.utils import find_flake8_unused
+
+    py_file = tmp_path / "foo.py"
+    py_file.write_text("import os\n")
+    called = {}
+
+    def fake_run(cmd, **kwargs):
+        called["cmd"] = cmd
+
+        class Result:
+            stdout = ""
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    find_flake8_unused([py_file], ignore_dirs=["venv", "foo"])
+    assert any("--exclude=venv" in c or "--exclude=foo" in c for c in called["cmd"])
+
+
+def test_find_flake8_unused_exception(monkeypatch):
+    from replicheck.utils import find_flake8_unused
+
+    def fake_run(*a, **k):
+        raise RuntimeError("fail")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    assert find_flake8_unused(["foo.py"]) == []
+
+
+def test_find_flake8_unused_output_parsing(monkeypatch, tmp_path):
+    from replicheck.utils import find_flake8_unused
+
+    py_file = tmp_path / "f.py"
+    py_file.write_text("import os\nx = 1\n")
+    fake_stdout = f"{py_file}:1:1: F401 os imported but unused\n{py_file}:2:1: F841 local variable 'x' is assigned to but never used\n"
+
+    class FakeResult:
+        stdout = fake_stdout
+        stderr = ""
+
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: FakeResult())
+    results = find_flake8_unused([py_file])
+    assert any(r["code"] == "F401" for r in results)
+    assert any(r["code"] == "F841" for r in results)
+    assert all(r["file"] == str(py_file) for r in results)

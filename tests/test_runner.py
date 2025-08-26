@@ -4,11 +4,11 @@ from main import main
 from replicheck.runner import ReplicheckRunner
 from replicheck.tools.LargeDetection.LC import LargeClassDetector
 from replicheck.tools.LargeDetection.LF import LargeFileDetector
+from replicheck.tools.TodoFixme.TDFM import TodoFixmeDetector
 from replicheck.utils import (
     compute_severity,
     find_files,
     find_flake8_unused,
-    find_todo_fixme_comments,
     get_file_hash,
 )
 
@@ -156,7 +156,9 @@ def test_utils_find_large_classes(tmp_path):
 def test_utils_find_todo_fixme_comments(tmp_path):
     code = "# TODO: fix this\n# FIXME something else"
     file = create_py_file(tmp_path, "todo.py", code)
-    results = find_todo_fixme_comments([file])
+    detector = TodoFixmeDetector()
+    detector.find_todo_fixme_comments([file])
+    results = detector.results
     assert any(r["type"] == "TODO" for r in results)
     assert any(r["type"] == "FIXME" for r in results)
 

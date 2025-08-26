@@ -5,7 +5,8 @@ from replicheck.reporter import Reporter
 from replicheck.tools.Duplication.Duplication import DuplicateDetector
 from replicheck.tools.LargeDetection.LC import LargeClassDetector
 from replicheck.tools.LargeDetection.LF import LargeFileDetector
-from replicheck.utils import find_files, find_flake8_unused, find_todo_fixme_comments
+from replicheck.tools.TodoFixme.TDFM import TodoFixmeDetector
+from replicheck.utils import find_files, find_flake8_unused
 
 # --- Cyclomatic Complexity Analysis ---
 try:
@@ -149,7 +150,11 @@ class ReplicheckRunner:
             large_classes = self.analyze_large_classes(files)
             duplicates = detector.find_duplicates(code_blocks)
             unused_imports_vars = self.analyze_unused_imports_vars(files)
-            todo_fixme_comments = find_todo_fixme_comments(files)
+
+            # Use TodoFixmeDetector instead of old function
+            todo_fixme_detector = TodoFixmeDetector()
+            todo_fixme_detector.find_todo_fixme_comments(files)
+            todo_fixme_comments = todo_fixme_detector.results
 
             # --- Bugs and Safety Issues ---
             bns_results = self.analyze_bugs_and_safety(files)
