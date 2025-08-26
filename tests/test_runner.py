@@ -5,7 +5,6 @@ from replicheck.runner import ReplicheckRunner
 from replicheck.tools.LargeDetection.LC import LargeClassDetector
 from replicheck.tools.LargeDetection.LF import LargeFileDetector
 from replicheck.utils import (
-    calculate_similarity,
     compute_severity,
     find_files,
     find_flake8_unused,
@@ -78,12 +77,6 @@ def test_runner_detects_duplicate(tmp_path):
         output_file=None,
     )
     assert runner.run() == 0
-
-
-def test_utils_calculate_similarity():
-    assert calculate_similarity(["a", "b", "c"], ["a", "b", "d"]) == 2 / 4
-    assert calculate_similarity([], []) == 0.0
-    assert calculate_similarity("abc", ["a", "b"]) == 0.0
 
 
 def test_utils_get_file_hash(tmp_path):

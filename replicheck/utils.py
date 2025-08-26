@@ -7,21 +7,6 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 
-def calculate_similarity(tokens1: List[str], tokens2: List[str]) -> float:
-    """
-    Calculate similarity between two token lists using Jaccard similarity.
-    Much faster than SequenceMatcher for code comparison.
-    Should handle non-list input gracefully (should not raise).
-    """
-    if not isinstance(tokens1, list) or not isinstance(tokens2, list):
-        return 0.0
-    set1 = set(tokens1)
-    set2 = set(tokens2)
-    intersection = len(set1 & set2)
-    union = len(set1 | set2)
-    return intersection / union if union else 0.0
-
-
 def get_file_hash(file_path: Path) -> Optional[str]:
     """
     Calculate SHA-256 hash of a file.

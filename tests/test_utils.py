@@ -4,37 +4,7 @@ Tests for the utils module.
 
 import textwrap
 
-from replicheck.utils import calculate_similarity, find_files, get_file_hash
-
-# --- calculate_similarity coverage ---
-
-
-def test_calculate_similarity_identical():
-    tokens1 = ["def", "foo", "(", ")", ":"]
-    tokens2 = ["def", "foo", "(", ")", ":"]
-    assert calculate_similarity(tokens1, tokens2) == 1.0
-
-
-def test_calculate_similarity_partial():
-    tokens1 = ["def", "foo", "(", ")", ":"]
-    tokens2 = ["def", "bar", "(", ")", ":"]
-    sim = calculate_similarity(tokens1, tokens2)
-    assert 0 < sim < 1.0
-
-
-def test_calculate_similarity_empty():
-    assert calculate_similarity([], []) == 0.0
-    assert calculate_similarity(["a"], []) == 0.0
-    assert calculate_similarity([], ["a"]) == 0.0
-
-
-def test_calculate_similarity_type_errors():
-    # Should handle non-list input gracefully (should not raise)
-    assert calculate_similarity("abc", "abc") == 0.0
-    assert calculate_similarity(None, None) == 0.0
-    assert calculate_similarity(["a"], None) == 0.0
-    assert calculate_similarity(None, ["a"]) == 0.0
-
+from replicheck.utils import find_files, get_file_hash
 
 # --- get_file_hash coverage ---
 
