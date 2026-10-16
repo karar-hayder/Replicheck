@@ -176,13 +176,6 @@ class Reporter:
             return f"\033]8;;{url}\033\\{path_str}\033]8;;\033\\"
         return path_str
 
-    def _count_severity(self, items, key="severity", level=None):
-        if not items:
-            return 0
-        if level is not None:
-            return sum(1 for x in items if x.get(key) == level)
-        return len(items)
-
     def _generate_summary(self, **kwargs) -> List[str]:
         """
         Dynamically generate a summary for all configured sections.
