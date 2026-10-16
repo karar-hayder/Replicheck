@@ -1,6 +1,23 @@
+import sys
 from pathlib import Path
 
 from replicheck.utils import compute_severity
+
+# Node.js and typhonjs-escomplex are setup steps, not bundled (see README,
+# "JavaScript/JSX Development"). Warn once so a missing install is visible
+# instead of looking like "no complex functions".
+_node_missing_warned = False
+
+
+def _warn_missing_node():
+    global _node_missing_warned
+    if not _node_missing_warned:
+        print(
+            "[WARN] Node.js not found; JS/TS cyclomatic complexity will be "
+            "skipped. See README, 'JavaScript/JSX Development'.",
+            file=sys.stderr,
+        )
+        _node_missing_warned = True
 
 
 def _run_node_helper(helper_path: Path, file_path: Path):
@@ -14,6 +31,14 @@ def _run_node_helper(helper_path: Path, file_path: Path):
             timeout=20,
         )
         return proc
+    except FileNotFoundError:
+        _warn_missing_node()
+
+        class DummyProc:
+            returncode = 1
+            stdout = ""
+
+        return DummyProc()
     except Exception:
 
         class DummyProc:

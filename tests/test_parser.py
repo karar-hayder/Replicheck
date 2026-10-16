@@ -2,7 +2,6 @@
 Tests for the code parser functionality, including coverage for more branches.
 """
 
-import types
 from pathlib import Path
 
 from replicheck.parser import CodeParser
@@ -46,10 +45,13 @@ def test_parse_python_syntax_error_returns_empty(tmp_path):
     assert blocks == []
 
 
-def test_parse_with_tree_sitter_grouped_and_list_captures(monkeypatch):
+def test_parse_with_tree_sitter_consumes_run_query_pairs(monkeypatch):
+    """
+    _parse_with_tree_sitter builds blocks from the (node, capture_name) pairs
+    that run_query returns, whatever shape the installed runtime produced.
+    """
     parser = CodeParser()
 
-    # Patch _get_parser and get_language to return dummy objects
     class DummyNode:
         def __init__(self):
             self.start_point = (0, 0)
@@ -68,48 +70,47 @@ def test_parse_with_tree_sitter_grouped_and_list_captures(monkeypatch):
         def parse(self, content):
             return DummyTree()
 
-    class DummyLanguage:
-        def query(self, query_str):
-            # Simulate both dict and list captures
-            if "javascript" in query_str:
-                # dict format
-                return types.SimpleNamespace(
-                    captures=lambda root: {"function": [DummyNode()]}
-                )
-            else:
-                # list format
-                return types.SimpleNamespace(
-                    captures=lambda root: [(DummyNode(), "function")]
-                )
-
     monkeypatch.setattr(parser, "_get_parser", lambda lang: DummyParser())
-    monkeypatch.setattr("replicheck.parser.get_language", lambda lang: DummyLanguage())
+    monkeypatch.setattr("replicheck.parser.get_language", lambda lang: object())
+    monkeypatch.setattr(
+        "replicheck.parser.run_query",
+        lambda language, query_str, root: [(DummyNode(), "function")],
+    )
 
-    # Patch query.captures to return dict
-    def fake_query_dict(query_str):
-        class Q:
-            def captures(self, root):
-                return {"function": [DummyNode()]}
-
-        return Q()
-
-    def fake_query_list(query_str):
-        class Q:
-            def captures(self, root):
-                return [(DummyNode(), "function")]
-
-        return Q()
-
-    # Test dict format
-    DummyLanguage.query = staticmethod(fake_query_dict)
     blocks = parser._parse_with_tree_sitter("abcd", Path("f.js"), "javascript")
     assert isinstance(blocks, list)
     assert blocks and blocks[0]["type"] == "function"
-    # Test list format
-    DummyLanguage.query = staticmethod(fake_query_list)
-    blocks = parser._parse_with_tree_sitter("abcd", Path("f.ts"), "typescript")
-    assert isinstance(blocks, list)
-    assert blocks and blocks[0]["type"] == "function"
+
+
+def test_run_query_normalises_dict_and_list_captures(monkeypatch):
+    """
+    run_query must return (node, capture_name) pairs whether the runtime hands
+    back {capture_name: [nodes]} (tree-sitter >= 0.25) or a list of tuples.
+    """
+    from replicheck.parser import run_query
+
+    node_a, node_b = object(), object()
+
+    class FakeCursor:
+        def __init__(self, query):
+            pass
+
+        def captures(self, root):
+            return {"function": [node_a, node_b]}
+
+    class FakeQuery:
+        def __init__(self, language, query_str):
+            pass
+
+    import tree_sitter
+
+    monkeypatch.setattr(tree_sitter, "Query", FakeQuery)
+    monkeypatch.setattr(tree_sitter, "QueryCursor", FakeCursor)
+
+    pairs = run_query(object(), "(function_declaration) @function", object())
+    assert sorted(pairs, key=lambda p: id(p[0])) == sorted(
+        [(node_a, "function"), (node_b, "function")], key=lambda p: id(p[0])
+    )
 
 
 def test_parse_with_tree_sitter_unsupported_language(monkeypatch, capsys):
@@ -131,11 +132,18 @@ def test_parse_with_tree_sitter_unsupported_language(monkeypatch, capsys):
     )
 
 
-def test_parse_with_tree_sitter_unexpected_captures(monkeypatch, capsys):
+def test_parse_with_tree_sitter_skips_capture_without_tokens(monkeypatch):
+    """A capture whose node yields no tokens must not produce a block."""
     parser = CodeParser()
 
     class DummyNode:
-        pass
+        def __init__(self):
+            self.start_point = (0, 0)
+            self.end_point = (1, 0)
+            self.children = []
+            self.type = "identifier"
+            self.start_byte = 0
+            self.end_byte = 4
 
     class DummyTree:
         @property
@@ -146,20 +154,13 @@ def test_parse_with_tree_sitter_unexpected_captures(monkeypatch, capsys):
         def parse(self, content):
             return DummyTree()
 
-    class DummyLanguage:
-        def query(self, query_str):
-            class Q:
-                def captures(self, root):
-                    return 123  # Not dict or list
-
-            return Q()
-
     monkeypatch.setattr(parser, "_get_parser", lambda lang: DummyParser())
-    monkeypatch.setattr("replicheck.parser.get_language", lambda lang: DummyLanguage())
-    blocks = parser._parse_with_tree_sitter("abcd", Path("f.js"), "javascript")
-    assert blocks == []
-    captured = capsys.readouterr()
-    assert "Unexpected captures format" in captured.out
+    monkeypatch.setattr("replicheck.parser.get_language", lambda lang: object())
+    monkeypatch.setattr(
+        "replicheck.parser.run_query", lambda language, query_str, root: []
+    )
+
+    assert parser._parse_with_tree_sitter("abcd", Path("f.js"), "javascript") == []
 
 
 def test_parse_with_tree_sitter_exception(monkeypatch, capsys):

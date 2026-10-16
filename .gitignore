@@ -1,6 +1,15 @@
 ## Custom
 node_modules
 
+# Benchmark artifacts (regenerate with benchmarks/generate_corpus.py)
+benchmarks/corpus/
+benchmarks/.tmp/
+
+# .NET build output. Regenerate with:
+#   utils/C#/ComplexityAnalyzer/BuildAndCompile.bash
+utils/C#/**/bin/
+utils/C#/**/obj/
+
 
 
 # Byte-compiled / optimized / DLL files

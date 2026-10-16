@@ -1,5 +1,5 @@
 # --- TODO/FIXME Comments ---
-from replicheck.parser import get_language, get_parser
+from replicheck.parser import get_language, get_parser, run_query
 
 
 class TodoFixmeDetector:
@@ -29,12 +29,7 @@ class TodoFixmeDetector:
         language = get_language(language_name)
         tree = parser.parse(bytes(content, "utf-8"))
         root = tree.root_node
-        query = language.query(
-            """
-            (comment) @comment
-        """
-        )
-        captures = query.captures(root)
+        captures = run_query(language, "(comment) @comment", root)
         for node, _ in captures:
             comment_text = content[node.start_byte : node.end_byte]
             # Expanded: match all TODO/FIXME and common variants, optionally with leading/trailing whitespace, and allow for case-insensitive matches

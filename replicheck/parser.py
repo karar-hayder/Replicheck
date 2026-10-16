@@ -11,6 +11,26 @@ from tree_sitter_language_pack import get_parser
 from .tree_sitter_loader import get_language
 
 
+def run_query(language, query_str: str, root):
+    """
+    Run a tree-sitter query and return captures as ``(node, capture_name)`` pairs.
+
+    tree-sitter 0.25 removed ``Query.captures`` in favour of ``QueryCursor`` and
+    changed the return shape to ``{capture_name: [nodes]}``. Normalising here
+    keeps the callers independent of which runtime is installed.
+    """
+    try:
+        from tree_sitter import Query, QueryCursor
+
+        result = QueryCursor(Query(language, query_str)).captures(root)
+    except ImportError:
+        result = language.query(query_str).captures(root)
+
+    if isinstance(result, dict):
+        return [(node, name) for name, nodes in result.items() for node in nodes]
+    return list(result)
+
+
 class CodeParser:
     def __init__(self):
         self.supported_extensions = {".py", ".js", ".jsx", ".cs", ".ts", ".tsx"}
@@ -107,42 +127,20 @@ class CodeParser:
                 print(f"[WARN] Unsupported language for tree-sitter: {language_name}")
                 return []
 
-            query = language.query(query_str)
-            captures = query.captures(root)
-            if isinstance(captures, dict):
-                for capture_name, nodes in captures.items():
-                    for node in nodes:
-                        tokens = self._tokenize_tree_sitter_node(node, content)
-                        if tokens:
-                            blocks.append(
-                                {
-                                    "location": {
-                                        "file": str(file_path),
-                                        "start_line": node.start_point[0] + 1,
-                                        "end_line": node.end_point[0] + 1,
-                                    },
-                                    "tokens": tokens,
-                                    "type": capture_name,
-                                }
-                            )
-            elif isinstance(captures, list):
-                for node, capture_name in captures:
-                    tokens = self._tokenize_tree_sitter_node(node, content)
-                    if tokens:
-                        blocks.append(
-                            {
-                                "location": {
-                                    "file": str(file_path),
-                                    "start_line": node.start_point[0] + 1,
-                                    "end_line": node.end_point[0] + 1,
-                                },
-                                "tokens": tokens,
-                                "type": capture_name,
-                            }
-                        )
-            else:
-                print(f"Unexpected captures format: {type(captures)}")
-                return []
+            for node, capture_name in run_query(language, query_str, root):
+                tokens = self._tokenize_tree_sitter_node(node, content)
+                if tokens:
+                    blocks.append(
+                        {
+                            "location": {
+                                "file": str(file_path),
+                                "start_line": node.start_point[0] + 1,
+                                "end_line": node.end_point[0] + 1,
+                            },
+                            "tokens": tokens,
+                            "type": capture_name,
+                        }
+                    )
 
             return blocks
 

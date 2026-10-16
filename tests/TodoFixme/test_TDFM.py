@@ -156,8 +156,7 @@ def test_find_todo_fixme_in_treesitter_basic(monkeypatch, tmp_path):
             ]
 
     class FakeLanguage:
-        def query(self, q):
-            return FakeQuery(q)
+        pass
 
     class FakeParser:
         def parse(self, b):
@@ -173,6 +172,14 @@ def test_find_todo_fixme_in_treesitter_basic(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "replicheck.tools.TodoFixme.TDFM.get_language", lambda lang: FakeLanguage()
+    )
+    # run_query is the seam the detector now uses for comment captures.
+    monkeypatch.setattr(
+        "replicheck.tools.TodoFixme.TDFM.run_query",
+        lambda language, query_str, root: [
+            (FakeNode(offsets[0][0], offsets[0][1], 0), "comment"),
+            (FakeNode(offsets[1][0], offsets[1][1], 1), "comment"),
+        ],
     )
     detector = TodoFixmeDetector()
     detector.find_todo_fixme_comments([file_path])
