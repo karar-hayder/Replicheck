@@ -15,7 +15,6 @@ import json
 from pathlib import Path
 
 # Ordered smallest to largest; the sweep writes one JSON per corpus size.
-# Ordered smallest to largest; the sweep writes one JSON per corpus size.
 ORDER = ["small", "medium", "large", "xlarge", "real", "self"]
 
 LABELS = {
@@ -50,6 +49,9 @@ def load(results_dir: Path):
         if missing:
             print(f"[skip] {path.name}: missing key(s) {', '.join(missing)}")
             continue
+        if (data.get("stages") or {}).get("sum_of_stages", {}).get("median") is None:
+            print(f"[skip] {path.name}: no stage timing (was it run with --cli-only?)")
+            continue
         if name not in ORDER:
             print(f"[warn] {path.name}: unrecognised corpus name, included last")
         runs[name] = data
@@ -78,12 +80,9 @@ def failed_stages(data):
     if not probe.get("predicted_overflow"):
         return []
     counts = data.get("counts") or {}
-    stages = []
-    if counts.get("unused_findings") == 0:
-        stages.append("unused_flake8")
-    if counts.get("bns_findings") == 0:
-        stages.append("bugs_and_safety")
-    return stages
+    if counts.get("unused_findings") == 0 or counts.get("bns_findings") == 0:
+        return ["flake8_checks"]
+    return []
 
 
 def stage_count_annotation(data, stage):
@@ -94,11 +93,10 @@ def stage_count_annotation(data, stage):
     if stage in failed_stages(data):
         return " ⚠ failed (command line overflow)"
     counts = data.get("counts") or {}
-    key = {
-        "unused_flake8": "unused_findings",
-        "bugs_and_safety": "bns_findings",
+    keys = {
+        "flake8_checks": ("unused_findings", "bns_findings"),
     }.get(stage)
-    if key and counts.get(key) == 0:
+    if keys and all(counts.get(key) == 0 for key in keys):
         return " (0 findings)"
     return ""
 

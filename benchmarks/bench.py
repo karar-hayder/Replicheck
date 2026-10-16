@@ -41,6 +41,7 @@ from replicheck.parser import CodeParser  # noqa: E402
 from replicheck.reporter import Reporter  # noqa: E402
 from replicheck.runner import ReplicheckRunner  # noqa: E402
 from replicheck.tools.Duplication.Duplication import DuplicateDetector  # noqa: E402
+from replicheck.tools.flake8_runner import run_flake8_for_scan  # noqa: E402
 from replicheck.tools.TodoFixme.TDFM import TodoFixmeDetector  # noqa: E402
 from replicheck.utils import find_files  # noqa: E402
 
@@ -83,9 +84,8 @@ STAGE_ORDER = [
     "large_files",
     "large_classes",
     "duplicates",
-    "unused_flake8",
+    "flake8_checks",
     "todo_fixme",
-    "bugs_and_safety",
     "report",
 ]
 
@@ -104,6 +104,119 @@ def count_lines(corpus: Path):
             if stripped and not stripped.startswith("#"):
                 effective += 1
     return physical, effective, files
+
+
+class GuardError(RuntimeError):
+    """A pre-flight or sanity check failed. Abort rather than waste a sweep."""
+
+
+MANIFEST_NAME = "_manifest.json"
+# Must match what the generators record as "files"/"physical_lines".
+CORPUS_EXTENSIONS = {".py", ".js", ".jsx", ".ts", ".tsx", ".cs"}
+# flake8 process start-up alone is ~1.5-2s, so a stage this fast did not run.
+MIN_FLAKE8_SECONDS = 0.05
+# Distinct from 1 (bad usage) so a sweep driver can tell them apart.
+EXIT_GUARD_FAILED = 2
+
+
+def verify_corpus(corpus: Path, check_lines: bool = True):
+    """
+    Fail fast when a corpus no longer matches how it was generated.
+
+    A formatter run over a corpus rewrites it silently - isort collapsing
+    multi-line imports is how this actually happened - and every measurement
+    afterwards is against a different corpus than the manifest describes, while
+    the reported line count quietly drifts. Both are checked here, before any
+    time is spent scanning.
+    """
+    files = sorted(
+        p for p in corpus.rglob("*") if p.is_file() and p.suffix in CORPUS_EXTENSIONS
+    )
+    if not files:
+        raise GuardError(f"{corpus} contains no source files to scan")
+
+    manifest_path = corpus / MANIFEST_NAME
+    if not manifest_path.exists():
+        return
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise GuardError(f"{manifest_path} could not be read: {exc}") from exc
+
+    expected_files = manifest.get("files")
+    if expected_files is not None and len(files) != expected_files:
+        raise GuardError(
+            f"{corpus.name}: {len(files)} source file(s) on disk but the "
+            f"manifest records {expected_files}. Regenerate the corpus."
+        )
+
+    manifest_mtime = manifest_path.stat().st_mtime
+    rewritten = [p for p in files if p.stat().st_mtime > manifest_mtime]
+    if rewritten:
+        raise GuardError(
+            f"{corpus.name}: {len(rewritten)} file(s) are newer than "
+            f"{MANIFEST_NAME} (e.g. {rewritten[0].name}). Something rewrote the "
+            "corpus after it was generated - a linter is the usual cause. "
+            "Regenerate the corpus before measuring it."
+        )
+
+    if check_lines:
+        physical = sum(
+            len(p.read_text(encoding="utf-8", errors="replace").splitlines())
+            for p in files
+        )
+        expected_lines = manifest.get("physical_lines")
+        if expected_lines is not None and physical != expected_lines:
+            raise GuardError(
+                f"{corpus.name}: {physical} lines on disk but the manifest "
+                f"records {expected_lines}. Regenerate the corpus."
+            )
+
+
+def verify_flake8_runnable():
+    """The two largest stages depend on flake8; if it cannot run, abort."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "flake8", "--version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+            check=False,
+        )
+    except Exception as exc:  # noqa: BLE001 - surface any launch failure as a guard
+        raise GuardError(f"flake8 could not be launched: {exc}") from exc
+    if proc.returncode != 0:
+        raise GuardError(
+            "flake8 is not runnable, so the unused-import and bug&safety stages "
+            "would silently report nothing and the timings would be meaningless."
+        )
+
+
+def verify_plausible(stage_summary, python_files, cli, max_spread):
+    """
+    Catch the two failures that make a result worthless rather than merely
+    slow: a stage that did not actually run, and a machine too busy to time on.
+    """
+    flake8_median = (stage_summary.get("flake8_checks") or {}).get("median")
+    if (
+        python_files
+        and flake8_median is not None
+        and flake8_median < MIN_FLAKE8_SECONDS
+    ):
+        raise GuardError(
+            f"flake8_checks took {flake8_median:.3f}s for {python_files} Python "
+            "file(s). flake8 cannot start that fast, so the stage did not run."
+        )
+
+    if len(cli["all"]) >= 2 and cli["median"]:
+        spread = (cli["max"] - cli["min"]) / cli["median"]
+        if spread > max_spread:
+            raise GuardError(
+                f"repetition spread {spread:.1%} exceeds the {max_spread:.0%} "
+                "limit: the machine was busy and these timings are not "
+                "reportable. Close other work and re-run, or raise --max-spread."
+            )
 
 
 def run_stages(corpus: Path, out_file: Path):
@@ -154,21 +267,22 @@ def run_stages(corpus: Path, out_file: Path):
     timings["duplicates"] = time.perf_counter() - t0
     counts["duplicate_groups"] = len(duplicates)
 
+    # One flake8 pass now serves both detectors, mirroring ReplicheckRunner.run().
     t0 = time.perf_counter()
-    unused = runner.analyze_unused_imports_vars(files)
-    timings["unused_flake8"] = time.perf_counter() - t0
+    unused_findings, bug_safety_findings = run_flake8_for_scan(
+        files, ignore_dirs=DEFAULTS["ignore_dirs"]
+    )
+    unused = runner.analyze_unused_imports_vars(files, findings=unused_findings)
+    bns = runner.analyze_bugs_and_safety(files, findings=bug_safety_findings)
+    timings["flake8_checks"] = time.perf_counter() - t0
     counts["unused_findings"] = len(unused)
+    counts["bns_findings"] = len(bns)
 
     todo_detector = TodoFixmeDetector()
     t0 = time.perf_counter()
     todo_detector.find_todo_fixme_comments(files)
     timings["todo_fixme"] = time.perf_counter() - t0
     counts["todo_findings"] = len(todo_detector.results)
-
-    t0 = time.perf_counter()
-    bns = runner.analyze_bugs_and_safety(files)
-    timings["bugs_and_safety"] = time.perf_counter() - t0
-    counts["bns_findings"] = len(bns)
 
     reporter = Reporter(output_format=DEFAULTS["output_format"])
     t0 = time.perf_counter()
@@ -353,6 +467,9 @@ def run_cli_once(corpus: Path, out_file: Path):
 
 
 def summarize(samples):
+    """Median/min/max over the repetition samples; empty means "not measured"."""
+    if not samples:
+        return {"median": None, "min": None, "max": None, "all": []}
     return {
         "median": statistics.median(samples),
         "min": min(samples),
@@ -386,26 +503,144 @@ def machine_metadata():
     return meta
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=(
+            "Defaults are tuned for a quick development check: one scan each of "
+            "the CLI and the per-stage replay, no warm-up, no flake8 probe. A "
+            "full measurement for results.md needs --reps 3 --warmup 1 --probe, "
+            "which costs roughly 4x as much per corpus."
+        ),
+    )
     parser.add_argument("--corpus", required=True)
-    parser.add_argument("--reps", type=int, default=3)
-    parser.add_argument("--warmup", type=int, default=1)
+    parser.add_argument(
+        "--reps",
+        type=int,
+        default=1,
+        help="timed repetitions (default: 1; use 3 for a published measurement)",
+    )
+    parser.add_argument(
+        "--warmup",
+        type=int,
+        default=0,
+        help="warm-up runs before timing (default: 0; use 1 for a published measurement)",
+    )
     parser.add_argument("--json", dest="json_out", default=None)
-    parser.add_argument("--skip-probe", action="store_true")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--probe",
+        action="store_true",
+        help=(
+            "replay the pre-fix flake8 command line and time the chunked "
+            "alternative. Slow on large corpora; only needed when documenting "
+            "the command-line limit."
+        ),
+    )
+    parser.add_argument(
+        "--cli-only",
+        action="store_true",
+        help=(
+            "skip the per-stage replay and time the end-to-end CLI alone. "
+            "Roughly halves a quick check, but the JSON then lacks stage data "
+            "and report.py will skip it."
+        ),
+    )
+    parser.add_argument(
+        "--max-spread",
+        type=float,
+        default=0.25,
+        help=(
+            "abort if the spread across repetitions exceeds this fraction of "
+            "the median, which means the machine was too busy to time on "
+            "(default: 0.25)"
+        ),
+    )
+    parser.add_argument(
+        "--no-guards",
+        action="store_true",
+        help="skip the integrity, environment and sanity checks",
+    )
+    return parser
 
+
+def validate_args(parser, args):
     if args.reps < 1:
         parser.error("--reps must be at least 1")
     if args.warmup < 0:
         parser.error("--warmup cannot be negative")
+    if args.cli_only and args.json_out:
+        print(
+            "[note] --cli-only omits stage data, so report.py will skip this "
+            "JSON file.",
+            file=sys.stderr,
+        )
+
+
+def print_summary(cli, core_median, stage_summary, result):
+    print()
+    print(
+        f"CLI end-to-end median: {cli['median']:.3f}s "
+        f"(min {cli['min']:.3f}s, max {cli['max']:.3f}s)"
+    )
+    if core_median is None:
+        print("Core stages:           skipped (--cli-only)")
+    else:
+        print(f"Core stages median:    {core_median:.3f}s")
+    print(
+        f"CLI throughput:        {result['throughput']['cli_lines_per_sec']:,.0f} lines/sec"
+    )
+    if core_median is None:
+        return
+    print()
+    print("Per-stage medians:")
+    for stage in STAGE_ORDER:
+        s = stage_summary[stage]
+        print(
+            f"  {stage:20s} {s['median']:8.3f}s  "
+            f"({s['median'] / core_median * 100:5.1f}%)"
+        )
+
+
+def guarded_preflight(args, corpus):
+    """True if the scan may proceed. Prints and returns False on a guard failure."""
+    if args.no_guards:
+        return True
+    try:
+        verify_corpus(corpus)
+        verify_flake8_runnable()
+    except GuardError as exc:
+        print(f"[ABORT] {exc}", file=sys.stderr)
+        return False
+    return True
+
+
+def guarded_plausibility(args, stage_summary, python_file_count, cli):
+    """True if the result is worth keeping. Prints and returns False otherwise."""
+    if args.no_guards:
+        return True
+    try:
+        verify_plausible(stage_summary, python_file_count, cli, args.max_spread)
+    except GuardError as exc:
+        print(f"[ABORT] {exc}", file=sys.stderr)
+        return False
+    return True
+
+
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
+    validate_args(parser, args)
 
     corpus = Path(args.corpus).resolve()
     if not corpus.exists():
         print(f"Error: corpus not found: {corpus}")
         return 1
 
+    if not guarded_preflight(args, corpus):
+        return EXIT_GUARD_FAILED
+
     physical, effective, n_files = count_lines(corpus)
+    python_file_count = sum(1 for _ in corpus.rglob("*.py"))
     print(f"Corpus: {corpus}")
     print(f"  files={n_files} physical_lines={physical} effective_lines={effective}")
 
@@ -417,7 +652,8 @@ def main():
         # Warm-up (populate caches, page in the interpreter and plugins).
         for _ in range(args.warmup):
             run_cli_once(corpus, tmp_dir / "warmup.txt")
-            run_stages(corpus, tmp_dir / "warmup_stages.txt")
+            if not args.cli_only:
+                run_stages(corpus, tmp_dir / "warmup_stages.txt")
 
         cli_samples = []
         for i in range(args.reps):
@@ -429,9 +665,10 @@ def main():
 
         stage_runs = []
         counts = {}
-        for i in range(args.reps):
-            timings, counts = run_stages(corpus, tmp_dir / f"stages_{i}.txt")
-            stage_runs.append(timings)
+        if not args.cli_only:
+            for i in range(args.reps):
+                timings, counts = run_stages(corpus, tmp_dir / f"stages_{i}.txt")
+                stage_runs.append(timings)
 
     stage_summary = {}
     for stage in STAGE_ORDER + ["sum_of_stages"]:
@@ -471,26 +708,14 @@ def main():
         },
     }
 
-    if not args.skip_probe:
+    if not guarded_plausibility(args, stage_summary, python_file_count, cli):
+        return EXIT_GUARD_FAILED
+
+    if args.probe:
         print("Probing flake8 invocations...")
         result["flake8_probe"] = probe_flake8(corpus)
 
-    print()
-    print(
-        f"CLI end-to-end median: {cli['median']:.3f}s "
-        f"(min {cli['min']:.3f}s, max {cli['max']:.3f}s)"
-    )
-    print(f"Core stages median:    {core_median:.3f}s")
-    print(
-        f"CLI throughput:        {result['throughput']['cli_lines_per_sec']:,.0f} lines/sec"
-    )
-    print()
-    print("Per-stage medians:")
-    for stage in STAGE_ORDER:
-        s = stage_summary[stage]
-        print(
-            f"  {stage:20s} {s['median']:8.3f}s  ({s['median'] / core_median * 100:5.1f}%)"
-        )
+    print_summary(cli, core_median, stage_summary, result)
 
     if args.json_out:
         out = Path(args.json_out)
