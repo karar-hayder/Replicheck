@@ -1,0 +1,206 @@
+{
+  "corpus": {
+    "path": "C:\\Users\\Karar\\Desktop\\Programming\\RandomProjects\\Utils\\Replicheck\\benchmarks\\corpus\\medium",
+    "files": 485,
+    "physical_lines": 150170,
+    "effective_lines": 139358
+  },
+  "settings": {
+    "min_similarity": 0.8,
+    "min_size": 50,
+    "output_format": "text",
+    "output_destination": "file (to capture the report)",
+    "complexity_threshold": 10,
+    "large_file_threshold": 500,
+    "large_class_threshold": 300,
+    "top_n_large": 10,
+    "extensions": "default (.py .js .jsx .cs .ts .tsx)"
+  },
+  "machine": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 151 Stepping 5, GenuineIntel",
+    "python": "3.12.3",
+    "cpu_count": 12,
+    "node": "v24.18.0",
+    "dotnet": "10.0.401"
+  },
+  "reps": 3,
+  "warmup_runs": 1,
+  "probe_method": "single-shot (no repetitions, no warm-up)",
+  "cli_end_to_end": {
+    "median": 38.46681600017473,
+    "min": 36.94619819987565,
+    "max": 39.298274599947035,
+    "all": [
+      39.298274599947035,
+      36.94619819987565,
+      38.46681600017473
+    ]
+  },
+  "stages": {
+    "find_files": {
+      "median": 0.03640850028023124,
+      "min": 0.03517600009217858,
+      "max": 0.043979700189083815,
+      "all": [
+        0.03640850028023124,
+        0.03517600009217858,
+        0.043979700189083815
+      ]
+    },
+    "parse_code_blocks": {
+      "median": 2.576132499612868,
+      "min": 2.5636939997784793,
+      "max": 2.6269343001767993,
+      "all": [
+        2.5636939997784793,
+        2.576132499612868,
+        2.6269343001767993
+      ]
+    },
+    "complexity": {
+      "median": 2.300741800107062,
+      "min": 2.264600799884647,
+      "max": 2.311556300148368,
+      "all": [
+        2.311556300148368,
+        2.264600799884647,
+        2.300741800107062
+      ]
+    },
+    "large_files": {
+      "median": 1.2240570997819304,
+      "min": 1.200404700357467,
+      "max": 1.3465560995973647,
+      "all": [
+        1.2240570997819304,
+        1.3465560995973647,
+        1.200404700357467
+      ]
+    },
+    "large_classes": {
+      "median": 1.6768977995961905,
+      "min": 1.6674183998256922,
+      "max": 1.6918545002117753,
+      "all": [
+        1.6768977995961905,
+        1.6674183998256922,
+        1.6918545002117753
+      ]
+    },
+    "duplicates": {
+      "median": 0.010187000036239624,
+      "min": 0.009140000212937593,
+      "max": 0.016877999994903803,
+      "all": [
+        0.009140000212937593,
+        0.016877999994903803,
+        0.010187000036239624
+      ]
+    },
+    "unused_flake8": {
+      "median": 14.120885699987411,
+      "min": 14.027427700348198,
+      "max": 14.43998120026663,
+      "all": [
+        14.120885699987411,
+        14.43998120026663,
+        14.027427700348198
+      ]
+    },
+    "todo_fixme": {
+      "median": 0.06546820001676679,
+      "min": 0.0556367002427578,
+      "max": 0.06916999956592917,
+      "all": [
+        0.06546820001676679,
+        0.0556367002427578,
+        0.06916999956592917
+      ]
+    },
+    "bugs_and_safety": {
+      "median": 14.370406299829483,
+      "min": 14.324622299987823,
+      "max": 14.788096900098026,
+      "all": [
+        14.788096900098026,
+        14.324622299987823,
+        14.370406299829483
+      ]
+    },
+    "report": {
+      "median": 0.013405700214207172,
+      "min": 0.013361300341784954,
+      "max": 0.016507599968463182,
+      "all": [
+        0.013361300341784954,
+        0.016507599968463182,
+        0.013405700214207172
+      ]
+    },
+    "sum_of_stages": {
+      "median": 36.74350959947333,
+      "min": 36.354511701036245,
+      "max": 36.809565800242126,
+      "all": [
+        36.809565800242126,
+        36.74350959947333,
+        36.354511701036245
+      ]
+    }
+  },
+  "counts": {
+    "files": 485,
+    "code_blocks": 7051,
+    "complexity_findings": 1899,
+    "large_files": 10,
+    "large_classes": 10,
+    "duplicate_groups": 739,
+    "unused_findings": 3319,
+    "todo_findings": 923,
+    "bns_findings": 1892
+  },
+  "throughput": {
+    "cli_lines_per_sec": 3903.8843245907815,
+    "core_lines_per_sec": 4086.9803031050824
+  },
+  "flake8_probe": {
+    "unused_F401_F841": {
+      "returncode": null,
+      "seconds": 0.0037704999558627605,
+      "command_line_chars": 55688,
+      "over_windows_limit": true,
+      "exception": "FileNotFoundError: [WinError 206] The filename or extension is too long",
+      "suspicious": true
+    },
+    "bns_B_S_E800": {
+      "returncode": null,
+      "seconds": 0.0027864002622663975,
+      "command_line_chars": 55386,
+      "over_windows_limit": true,
+      "exception": "FileNotFoundError: [WinError 206] The filename or extension is too long",
+      "suspicious": true
+    },
+    "files_passed": 485,
+    "windows_command_line_limit": 32767,
+    "predicted_overflow": true,
+    "chunked_estimate": {
+      "unused_F401_F841": {
+        "chunks": 4,
+        "path_budget_chars": 16000,
+        "total_seconds": 14.34136990038678,
+        "single_invocation_startup_seconds": 0.590693200007081,
+        "estimated_startup_seconds": 2.362772800028324,
+        "failed_chunks": 0
+      },
+      "bns_B_S_E800": {
+        "chunks": 4,
+        "path_budget_chars": 16000,
+        "total_seconds": 14.088685000315309,
+        "single_invocation_startup_seconds": 0.590693200007081,
+        "estimated_startup_seconds": 2.362772800028324,
+        "failed_chunks": 0
+      }
+    }
+  }
+}
