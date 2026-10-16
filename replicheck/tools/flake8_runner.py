@@ -145,7 +145,7 @@ def split_findings(findings):
     return unused, bug_safety
 
 
-def run_flake8_for_scan(paths, ignore_dirs=None, budget=PATH_BUDGET_CHARS):
+def run_flake8_for_scan(paths, ignore_dirs=None, codes=None, budget=PATH_BUDGET_CHARS):
     """
     Run flake8 once for every code both detectors need, and split the result.
 
@@ -154,6 +154,9 @@ def run_flake8_for_scan(paths, ignore_dirs=None, budget=PATH_BUDGET_CHARS):
     JavaScript-only repository was spending half its time in flake8 runs that
     could not produce a single finding. With no Python files, flake8 is not
     invoked at all.
+
+    `codes` narrows the selection, which is how a caller trades findings for
+    speed; None means the full set the detectors need.
 
     Returns (unused_findings, bug_safety_findings). One pass instead of two,
     which halves the dominant cost of a scan.
@@ -164,7 +167,7 @@ def run_flake8_for_scan(paths, ignore_dirs=None, budget=PATH_BUDGET_CHARS):
 
     findings = run_flake8(
         python_paths,
-        select=",".join(UNUSED_CODES + BUG_SAFETY_CODES),
+        select=codes or ",".join(UNUSED_CODES + BUG_SAFETY_CODES),
         ignore_dirs=ignore_dirs,
         budget=budget,
     )

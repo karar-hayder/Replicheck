@@ -404,7 +404,9 @@ def test_runner_analyze_complexity_all_types(tmp_path):
 
 
 def test_runner_run_catches_exception(tmp_path, monkeypatch):
-    # Simulate an exception in run
+    # Simulate an exception in run. A file has to exist, otherwise there is
+    # nothing to parse and the parser that raises is never constructed.
+    create_py_file(tmp_path, "x.py", "def f(a):\n    return a\n")
     runner = ReplicheckRunner(
         path=tmp_path,
         min_similarity=0.8,

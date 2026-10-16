@@ -47,6 +47,49 @@ python main.py --path /path/to/code
 - `--large-file-threshold`: Token count threshold to flag large files (default: 500)
 - `--large-class-threshold`: Token count threshold to flag large classes (default: 300)
 - `--top-n-large`: Show only the top N largest files/classes (default: 10, 0=all)
+- `--cache`: Reuse per-file results from the previous run in this directory and analyse only the files that changed. Off by default — see [Caching](#caching).
+- `--cache-file`: Where to keep the cache (default: `.replicheck-cache.json` inside the scanned directory)
+- `--flake8-codes`: Comma-separated flake8 codes to select, e.g. `F401,F841`. flake8 is the largest cost of a scan, so narrowing this is the main speed lever. Omitted means every code the detectors need (`F401,F841,B,S,E800`).
+- `--full-scan`: Force a complete scan: ignore any cache and use the full flake8 code set. Already the default; this is an explicit override for when the fast paths are enabled elsewhere.
+
+### Caching
+
+A repeat scan of an unchanged tree costs exactly what the first scan did, which
+is the wrong trade while editing. `--cache` stores each file's own results —
+its parsed blocks, complexity findings, size metrics, lint findings and comments
+— keyed by a hash of that file's content, and the next run analyses only the
+files that changed.
+
+Duplicate grouping is deliberately *not* cached: it compares blocks across
+files, so it always runs over the combined set.
+
+Caching is **off by default**, because a cache that answers with stale findings
+is worse than a slow scan. What it will not do:
+
+- A file whose content changed is always re-analysed.
+- The whole cache is discarded when the scan root, the cache format, or any
+  setting that affects a per-file result changes (`--min-size`,
+  `--complexity-threshold`, the two size thresholds, `--flake8-codes`, or
+  `--extensions`), so it can never answer for a different configuration.
+- A corrupt or unreadable cache is ignored with a warning, never trusted.
+- `--full-scan` bypasses it entirely.
+
+```bash
+# First run analyses everything; later runs only what changed.
+python main.py --path ./src --cache
+```
+
+On the 50k-line corpus a cold scan takes 5.8s and a warm one **0.32s** — about
+18x, since the warm run only hashes the files, groups the cached blocks and
+writes the report.
+
+`--flake8-codes` is the other speed lever, and the only one that trades findings
+for time — trimming it drops whole categories, so it is opt-in:
+
+```bash
+# Unused imports and variables only: skips bug and security analysis.
+python main.py --path ./src --cache --flake8-codes F401,F841
+```
 
 Example:
 
@@ -153,6 +196,27 @@ Small repositories are start-up bound, not throughput bound: scanning
 Replicheck's own 6,901 lines takes 2.4 s, of which 88% is flake8 process
 start-up. Quote a throughput figure together with the scope and the size of the
 corpus, or it will not mean much.
+
+### Multi-language path
+
+JS/TS and C# cyclomatic complexity shell out to a helper, and process start-up
+dominated it: measured at 223 ms per JavaScript file and 214 ms per C# file,
+**independent of file size**, so a 1,976-file tree spent minutes in that one
+stage. Both now pass 50 files per invocation. flake8 was also being handed
+non-Python files, which it ignores — that alone cost 18.6 s of a 36.2 s
+JavaScript-only scan.
+
+| Path | Before | After |
+| --- | ---: | ---: |
+| JS complexity, 1,976 files / 112,500 lines | ~394 s | 11.5 s |
+| C# complexity, 100 files | 20.4 s | 0.5 s |
+| JavaScript repository, end to end | 36.2 s | 17.8 s |
+
+> These were measured against a JavaScript tree copied from `utils/node_modules`
+> and a temporary C# sample, **not against committed corpora**, so the benchmark
+> suite does not yet verify them. Adding JS/TS and C# corpora is tracked in
+> [#27](https://github.com/karar-hayder/Replicheck/issues/27); until then treat
+> the figures above as one-off measurements and the table above as Python-only.
 
 ## Development
 
