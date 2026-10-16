@@ -152,6 +152,10 @@ class Reporter:
         "None": 0,
     }
 
+    # A similarity group can span thousands of blocks, and listing every
+    # location would bury the report. The count is always reported in full.
+    MAX_LOCATIONS_PER_GROUP = 20
+
     def __init__(
         self, output_format: str = "text", config: Optional[Dict[str, Any]] = None
     ):
@@ -175,6 +179,17 @@ class Reporter:
                 url += f"#L{line}"
             return f"\033]8;;{url}\033\\{path_str}\033]8;;\033\\"
         return path_str
+
+    @staticmethod
+    def _similarity_note(group):
+        """
+        Render a group's similarity, but only when it is below 1.0. An exact
+        match needs no explanation, and repeating it on every line is noise.
+        """
+        similarity = group.get("similarity", 1.0)
+        if not isinstance(similarity, (int, float)) or similarity >= 1.0:
+            return ""
+        return f" (similarity: {similarity:.2f})"
 
     def _generate_summary(self, **kwargs) -> List[str]:
         """
@@ -246,14 +261,19 @@ class Reporter:
                     # Special handling for duplicates group format
                     for i, group in enumerate(items, 1):
                         cross = " (cross-file)" if group.get("cross_file") else ""
+                        similarity = self._similarity_note(group)
                         line = (
                             f"Clone #{i}: size={group.get('size', '?')} tokens, "
-                            f"count={group.get('num_duplicates', '?')}{cross}"
+                            f"count={group.get('num_duplicates', '?')}{cross}{similarity}"
                         )
                         output.append(line)
-                        for loc in group.get("locations", []):
+                        locations = group.get("locations", [])
+                        for loc in locations[: self.MAX_LOCATIONS_PER_GROUP]:
                             loc_line = f"    - {loc.get('file', '?')}:{loc.get('start_line', '?')}-{loc.get('end_line', '?')}"
                             output.append(loc_line)
+                        hidden = len(locations) - self.MAX_LOCATIONS_PER_GROUP
+                        if hidden > 0:
+                            output.append(f"    - ... and {hidden} more location(s)")
                         tokens = group.get("tokens", [])
                         snippet = " ".join(tokens[:10]) + (
                             " ..." if len(tokens) > 10 else ""
@@ -328,13 +348,20 @@ class Reporter:
                     if key == "duplicates" and formatter is None:
                         for i, group in enumerate(items, 1):
                             cross = " (cross-file)" if group.get("cross_file") else ""
+                            similarity = self._similarity_note(group)
                             md.append(
-                                f"- Clone #{i}: size={group.get('size', '?')} tokens, count={group.get('num_duplicates', '?')}{cross}"
+                                f"- Clone #{i}: size={group.get('size', '?')} tokens, count={group.get('num_duplicates', '?')}{cross}{similarity}"
                             )
-                            for loc in group.get("locations", []):
+                            for loc in group.get("locations", [])[
+                                : self.MAX_LOCATIONS_PER_GROUP
+                            ]:
                                 md.append(
                                     f"    - {self._format_path(loc.get('file', '?'), loc.get('start_line', '?'), 'markdown')} - {loc.get('file', '?')}:{loc.get('start_line', '?')}-{loc.get('end_line', '?')}"
                                 )
+                            locations = group.get("locations", [])
+                            hidden = len(locations) - self.MAX_LOCATIONS_PER_GROUP
+                            if hidden > 0:
+                                md.append(f"    - ... and {hidden} more location(s)")
                             tokens = group.get("tokens", [])
                             snippet = " ".join(tokens[:10]) + (
                                 " ..." if len(tokens) > 10 else ""
