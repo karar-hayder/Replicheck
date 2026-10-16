@@ -7,7 +7,7 @@
 ## Features
 
 - **Duplicate Detection:** Finds duplicate code blocks within user-specified directories.
-- **Configurable Block Size:** Allows users to set the minimum code block size (in tokens) for comparison. Duplicates are currently reported only on exact token-tuple matches; the `--min-similarity` flag is accepted but does not yet affect the results.
+- **Configurable Thresholds:** Allows users to set the minimum similarity (Jaccard over token sets) and the minimum code block size in tokens for comparison. At `1.0` only exact matches are reported; below that, near-duplicates are grouped too.
 - **Language Support:** Supports Python, JavaScript/JSX, Typescript/TSX, and C# code natively.
 - **Directory and File Filtering:** Ignores virtual environments and user-specified directories. Users can also specify which file extensions to analyze.
 - **Reporting:** Generates detailed reports in either text or JSON format, with the option to output to a file or the console.
@@ -39,7 +39,7 @@ python main.py --path /path/to/code
 Key options:
 
 - `--path`: Directory to analyze (required)
-- `--min-similarity`: Minimum similarity threshold (default: 0.8). Accepted but currently has no effect — only exact duplicates are reported.
+- `--min-similarity`: Minimum similarity for two blocks to be reported together (0.0 to 1.0, default: 0.8). Similarity is the Jaccard ratio of token sets.
 - `--min-size`: Minimum code block size in tokens (default: 50)
 - `--extensions`: File extensions to analyze (default: .py,.js,.jsx,.cs,.ts,.tsx)
 - `--output-format`: Output format (text, json or markdown, default: text)
@@ -49,7 +49,7 @@ Key options:
 ## What Has Been Implemented
 
 - **Code Parsing:** Uses the AST module for Python and Tree-sitter for JavaScript/JSX, Typescript/TSX and C# to extract functions and classes for comparison and analysis.
-- **Duplicate Detection:** Groups code blocks by exact token tuple and reports the groups with more than one location. Matching is exact, not fuzzy.
+- **Duplicate Detection:** Groups code blocks by Jaccard similarity over their token sets, reporting each group's locations and its weakest pairwise similarity. At `--min-similarity 1.0` this reduces to exact token-sequence matching.
 - **Reporting:** Outputs results in both human-readable and machine-readable formats.
 - **Comprehensive Testing:** All core modules have dedicated tests, including edge cases and error handling.
 - **Pre-commit and Formatting:** Supports Black and pytest for code style and testing, and pre-commit hooks for consistency.
@@ -64,13 +64,13 @@ Key options:
 
 ### 2. **Improved Similarity Metrics**
 
-- **Current State:** Groups code blocks by exact token tuple. Near-duplicates that differ by a single token are not reported, and `--min-similarity` is inert.
-- **Improvement:** Implement an actual similarity metric (e.g., token sequence alignment or AST-based comparison) so that near-duplicates are detected and the similarity threshold takes effect.
+- **Current State:** Jaccard similarity over token *sets*, with an exact prefix-filter candidate generator so the whole set is never compared pairwise. Sets are order-insensitive, so a reordered body counts as a duplicate; near-duplicates below the threshold are still missed.
+- **Improvement:** Sequence-aware comparison (token alignment, AST shape) to catch reordered or restructured code that set similarity rates too low.
 
 ### 3. **Performance Optimization**
 
-- **Current State:** Duplicate detection itself is cheap (exact-match hashing), but each file is read and parsed several times by the different detectors, and flake8 is invoked twice over the whole Python file list.
-- **Improvement:** Share a single parse per file across the detectors, and run flake8 once for all selected codes.
+- **Current State:** Each file is read and parsed several times by the different detectors. flake8 now runs once for all selected codes.
+- **Improvement:** Share a single parse per file across the detectors.
 
 ### 4. **Integration with CI/CD**
 
@@ -94,7 +94,7 @@ Key options:
 
 ## Notable Limitations
 
-- **Similarity metric is basic and may not catch all forms of duplication.**
+- **Similarity is measured over token sets, so it is order-insensitive: a reordered body reads as an exact match, and restructured code that keeps the same vocabulary reads as a duplicate. Very repetitive corpora can also chain unrelated blocks into one large group through connected components.**
 - **Performance is dominated by repeated parsing and by external tool invocations (flake8, Node.js, the C# analyzer); see the Benchmarks section of [README.md](README.md).**
 
 ## Testing
