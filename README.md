@@ -10,7 +10,7 @@ A Python tool for detecting code duplications and code quality issues in your pr
 - Detect Unused imports and vars (Python)
 - Find TODO/FIXME comments across your codebase
 - Support for Python, JavaScript, JSX, Typescript, TSX and C# files
-- Configurable similarity threshold and minimum block size
+- Configurable minimum block size for duplicate detection
 - Ignores virtual environments and user-specified directories
 - Detailed reporting in text, JSON, or Markdown format
 - Summary section at the top of every report
@@ -37,11 +37,12 @@ python main.py --path /path/to/code
 ### Options
 
 - `--path`: Directory to analyze (required)
-- `--min-similarity`: Minimum similarity threshold (0.0 to 1.0, default: 0.8)
+- `--min-similarity`: Minimum similarity threshold (0.0 to 1.0, default: 0.8). Accepted but currently has no effect — only exact duplicates are reported.
 - `--min-size`: Minimum code block size in tokens (default: 50)
 - `--output-format`: Output format (`text`, `json`, or `markdown`, default: `text`)
 - `--output-file`: Path to save the report (optional)
-- `--ignore-dirs`: Space-separated list of directories to ignore (default: .git .venv venv env ENV build dist)
+- `--ignore-dirs`: Space-separated list of directories to ignore (default: .git .venv venv env build dist node_modules __pycache__ .pytest_cache coverage vendor bower_components .vscode .idea .vs .next)
+- `--extensions`: File extensions to include (default: .py .js .jsx .cs .ts .tsx)
 - `--complexity-threshold`: Cyclomatic complexity threshold to flag functions (default: 10)
 - `--large-file-threshold`: Token count threshold to flag large files (default: 500)
 - `--large-class-threshold`: Token count threshold to flag large classes (default: 300)
@@ -113,6 +114,47 @@ Every report starts with a summary, e.g.:
 - In Markdown reports, file paths are clickable and link to the relevant file/line (works in GitHub, VSCode, etc.).
 - In supported terminals, file paths are clickable if your terminal supports OSC 8 hyperlinks.
 
+## Benchmarks
+
+Measured on Windows 11 with a 12-core Intel i5-12400F, Python 3.12.3 and Node.js
+24.18.0. Default settings, median of 3 runs after a warm-up. Methodology, raw
+JSON and reproduction steps: [benchmarks/README.md](benchmarks/README.md).
+
+| Corpus | Lines of code | Files | Scan time | Throughput |
+| --- | ---: | ---: | ---: | ---: |
+| Replicheck's own source | 4,550 | 37 | 5.2 s | 880 lines/sec |
+| Synthetic | 50,211 | 166 | 16.3 s | 3,081 lines/sec |
+| Synthetic | 150,170 | 485 | 38.5 s | 3,904 lines/sec |
+| Synthetic | 375,144 | 1,213 | 92.6 s | 4,053 lines/sec |
+| Synthetic | 750,093 | 2,426 | 172.9 s | 4,339 lines/sec |
+| Real-world | 630,836 | 2,189 | 140.9 s | 4,477 lines/sec |
+
+Runtime is linear in the amount of code, settling at roughly **4,300–4,500
+lines/sec**. The real-world row is 630k lines of genuine third-party library
+code (pip, pytest, black, Pygments, setuptools); it lands within 3% of the
+synthetic 750k rate, so the synthetic figures are not flattering themselves.
+
+Two-thirds of a scan is flake8, not Replicheck's own analysis:
+
+| Stage | Share of scan time (~750k corpus) |
+| --- | ---: |
+| Unused imports/variables (flake8) | 37% |
+| Bugs and safety (flake8) | 37% |
+| Parse code blocks | 8% |
+| Cyclomatic complexity | 7% |
+| Large class detection | 5.5% |
+| Large file detection | 4.9% |
+| Duplicate detection | 0.04% |
+
+Excluding the two flake8-backed stages, the analysis pipeline itself runs at
+about **17,000 lines/sec** on synthetic code and **26,000 lines/sec** on real
+code.
+
+Small repositories are start-up bound, not throughput bound: scanning
+Replicheck's own 4,550 lines takes 5.2 s, of which 97% is flake8 process
+start-up. Quote a throughput figure together with the scope and the size of the
+corpus, or it will not mean much.
+
 ## Development
 
 To run tests:
@@ -138,13 +180,27 @@ This is required for cyclomatic complexity analysis of JS/JSX files.
 
 ### C# Support
 
-Replicheck now supports C# files for:
+Replicheck supports C# files for:
 
-- Duplicate code block detection
-- Large file and class detection
-- Cyclomatic complexity analysis (based on tree-sitter and custom static heuristics)
+- Duplicate code block detection (tree-sitter)
+- Large file and class detection (tree-sitter)
+- Cyclomatic complexity analysis (a compiled Roslyn-based analyzer)
 
-No external dependencies are required for C# analysis. Just include `.cs` files in your scan directory and Replicheck will handle the rest.
+Cyclomatic complexity for C# is measured by a small companion .NET program,
+`utils/C#/ComplexityAnalyzer`. It is **not** committed to the repository — build
+it once before scanning C# files:
+
+```bash
+cd utils/C#/ComplexityAnalyzer
+dotnet build
+dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true
+```
+
+This produces `bin/Release/net9.0/win-x64/ComplexityAnalyzer.exe`, which is the
+path Replicheck looks for. Requires the .NET SDK (built and tested with .NET 9).
+Duplicate and large-file/class detection for C# work without it; only the
+complexity analysis needs the build. If the analyzer is missing, Replicheck
+prints a warning and skips C# complexity rather than failing silently.
 
 ## Pre-commit Hooks (Recommended)
 
