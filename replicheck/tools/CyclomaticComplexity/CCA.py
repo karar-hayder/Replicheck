@@ -31,8 +31,8 @@ class CyclomaticComplexityAnalyzer:
 
         for f in py_files:
             results.extend(self._analyze_python(f))
-        for f in js_files:
-            results.extend(self._analyze_js(f))
+        if js_files:
+            results.extend(self._analyze_js_batch(js_files))
         for f in cs_files:
             results.extend(self._analyze_cs(f))
         self.results = results
@@ -44,6 +44,18 @@ class CyclomaticComplexityAnalyzer:
         from .py_utils import analyze_py_cyclomatic_complexity
 
         return analyze_py_cyclomatic_complexity(file_path, self.threshold)
+
+    def _analyze_js_batch(self, files: List[Path]) -> List[Dict[str, Any]]:
+        """
+        Analyze all JS/TS/JSX/TSX files in a few Node invocations.
+
+        Node start-up is ~223 ms per invocation and does not depend on file
+        size, so calling it once per file made a large JS repository take
+        minutes. Batching amortises that across files.
+        """
+        from .js_utils import analyze_js_cyclomatic_complexity_batch
+
+        return analyze_js_cyclomatic_complexity_batch(files, self.threshold)
 
     def _analyze_js(self, file_path: Path) -> List[Dict[str, Any]]:
         """
