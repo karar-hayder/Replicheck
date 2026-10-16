@@ -1,6 +1,23 @@
+import sys
 from pathlib import Path
 
 from replicheck.utils import compute_severity
+
+# The analyzer is built, not committed (see README, "C# Support"). Warn once so
+# that a missing build is visible instead of looking like "no complex methods".
+_analyzer_missing_warned = False
+
+
+def _warn_missing_analyzer(exe_path: Path):
+    global _analyzer_missing_warned
+    if not _analyzer_missing_warned:
+        print(
+            f"[WARN] C# complexity analyzer not found at {exe_path}; C# "
+            "cyclomatic complexity will be skipped. Build it with "
+            "utils/C#/ComplexityAnalyzer/BuildAndCompile.bash",
+            file=sys.stderr,
+        )
+        _analyzer_missing_warned = True
 
 
 def _run_cs_analyzer(exe_path: Path, file_path: Path):
@@ -67,6 +84,9 @@ def analyze_cs_cyclomatic_complexity(file_path: Path, threshold: int = 10):
         / "ComplexityAnalyzer.exe"
     )
     try:
+        if not exe_path.exists():
+            _warn_missing_analyzer(exe_path)
+            return []
         proc = _run_cs_analyzer(exe_path, file_path)
         return _parse_cs_complexity_output(proc, file_path, threshold)
     except Exception:

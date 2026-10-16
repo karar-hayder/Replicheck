@@ -1,3 +1,6 @@
+import shutil
+from pathlib import Path
+
 import pytest
 
 from main import main
@@ -8,6 +11,19 @@ from replicheck.tools.LargeDetection.LF import LargeFileDetector
 from replicheck.tools.TodoFixme.TDFM import TodoFixmeDetector
 from replicheck.tools.Unused.Unused import UnusedCodeDetector
 from replicheck.utils import compute_severity, find_files, get_file_hash
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+CS_ANALYZER = (
+    REPO_ROOT
+    / "utils"
+    / "C#"
+    / "ComplexityAnalyzer"
+    / "bin"
+    / "Release"
+    / "net9.0"
+    / "win-x64"
+    / "ComplexityAnalyzer.exe"
+)
 
 
 def create_py_file(tmp_path, name, content):
@@ -94,6 +110,11 @@ def test_utils_compute_severity():
 
 
 def test_utils_analyze_cyclomatic_complexity_all_types_with_cca(tmp_path):
+    """
+    Python is always analysed. JS needs Node.js plus typhonjs-escomplex, and C#
+    needs the compiled analyzer (see README, "C# Support"), so those results are
+    only asserted when the relevant tool is actually available.
+    """
     py_code = (
         "def foo():\n    if True:\n        return 1\n    else:\n        return 2\n"
     )
@@ -111,10 +132,12 @@ def test_utils_analyze_cyclomatic_complexity_all_types_with_cca(tmp_path):
     analyzer.analyze()
     results = analyzer.results
 
-    # Should have at least one result per file type if analyzers are present
     assert any(r["file"].endswith("cc.py") for r in results)
-    assert any(r["file"].endswith("cc.js") for r in results)
-    assert any(r["file"].endswith("cc.cs") for r in results)
+
+    if shutil.which("node") is not None:
+        assert any(r["file"].endswith("cc.js") for r in results)
+    if CS_ANALYZER.exists():
+        assert any(r["file"].endswith("cc.cs") for r in results)
 
 
 def test_utils_find_large_files(tmp_path):
