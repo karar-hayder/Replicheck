@@ -17,44 +17,63 @@ class FunctionInfo
 
 class Program
 {
+    // Usage: ComplexityAnalyzer.exe <path.cs> [more paths...]
+    //
+    // Prints {"<path>": [ {Name, Complexity, LineNo, EndLine}, ... ], ...}.
+    // A path whose value is null could not be analysed; the rest of the batch
+    // still succeeds, so one bad file never costs its batch-mates their results.
     static void Main(string[] args)
     {
         if (args.Length < 1)
         {
-            Console.Error.WriteLine("Usage: dotnet run <path-to-cs-file>");
+            Console.Error.WriteLine("Usage: ComplexityAnalyzer <path-to-cs-file> [more paths...]");
             return;
         }
 
-        var filePath = args[0];
-        if (!File.Exists(filePath))
+        var output = new Dictionary<string, List<FunctionInfo>?>();
+
+        foreach (var filePath in args)
         {
-            Console.Error.WriteLine($"File not found: {filePath}");
-            return;
-        }
-
-        var code = File.ReadAllText(filePath);
-        var tree = CSharpSyntaxTree.ParseText(code);
-        var root = tree.GetCompilationUnitRoot();
-
-        var methods = root.DescendantNodes()
-                          .OfType<MethodDeclarationSyntax>();
-
-        var result = new List<FunctionInfo>();
-
-        foreach (var method in methods)
-        {
-            var complexity = CalculateCyclomaticComplexity(method);
-            var location = method.GetLocation().GetLineSpan();
-            result.Add(new FunctionInfo
+            try
             {
-                Name = method.Identifier.Text,
-                Complexity = complexity,
-                LineNo = location.StartLinePosition.Line + 1,
-                EndLine = location.EndLinePosition.Line + 1
-            });
+                if (!File.Exists(filePath))
+                {
+                    Console.Error.WriteLine($"File not found: {filePath}");
+                    output[filePath] = null;
+                    continue;
+                }
+
+                var code = File.ReadAllText(filePath);
+                var tree = CSharpSyntaxTree.ParseText(code);
+                var root = tree.GetCompilationUnitRoot();
+
+                var result = new List<FunctionInfo>();
+
+                foreach (var method in root.DescendantNodes()
+                                          .OfType<MethodDeclarationSyntax>())
+                {
+                    var complexity = CalculateCyclomaticComplexity(method);
+                    var location = method.GetLocation().GetLineSpan();
+                    result.Add(new FunctionInfo
+                    {
+                        Name = method.Identifier.Text,
+                        Complexity = complexity,
+                        LineNo = location.StartLinePosition.Line + 1,
+                        EndLine = location.EndLinePosition.Line + 1
+                    });
+                }
+
+                output[filePath] = result;
+            }
+            catch (Exception ex)
+            {
+                // Reported per file on stderr; the batch carries on.
+                Console.Error.WriteLine($"Error analyzing {filePath}: {ex.Message}");
+                output[filePath] = null;
+            }
         }
 
-        Console.WriteLine(JsonConvert.SerializeObject(result, Formatting.None));
+        Console.WriteLine(JsonConvert.SerializeObject(output, Formatting.None));
     }
 
     static int CalculateCyclomaticComplexity(MethodDeclarationSyntax method)

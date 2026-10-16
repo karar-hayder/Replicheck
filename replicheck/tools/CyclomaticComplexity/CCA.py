@@ -33,8 +33,8 @@ class CyclomaticComplexityAnalyzer:
             results.extend(self._analyze_python(f))
         if js_files:
             results.extend(self._analyze_js_batch(js_files))
-        for f in cs_files:
-            results.extend(self._analyze_cs(f))
+        if cs_files:
+            results.extend(self._analyze_cs_batch(cs_files))
         self.results = results
 
     def _analyze_python(self, file_path: Path) -> List[Dict[str, Any]]:
@@ -64,6 +64,18 @@ class CyclomaticComplexityAnalyzer:
         from .js_utils import analyze_js_cyclomatic_complexity
 
         return analyze_js_cyclomatic_complexity(file_path, self.threshold)
+
+    def _analyze_cs_batch(self, files: List[Path]) -> List[Dict[str, Any]]:
+        """
+        Analyze all C# files in a few analyzer invocations.
+
+        The analyzer's start-up is ~214 ms per invocation and does not depend
+        on file size, so calling it once per file made a large C# repository
+        take minutes.
+        """
+        from .cs_utils import analyze_cs_cyclomatic_complexity_batch
+
+        return analyze_cs_cyclomatic_complexity_batch(files, self.threshold)
 
     def _analyze_cs(self, file_path: Path) -> List[Dict[str, Any]]:
         """
