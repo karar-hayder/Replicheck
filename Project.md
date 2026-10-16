@@ -69,13 +69,13 @@ Key options:
 
 ### 3. **Performance Optimization**
 
-- **Current State:** Each file is read and parsed several times by the different detectors. flake8 now runs once for all selected codes.
-- **Improvement:** Share a single parse per file across the detectors.
+- **Current State:** flake8 runs once for all selected codes instead of twice, JS/TS and C# complexity batch 50 files per helper invocation instead of spawning a process per file, and non-Python files are no longer handed to flake8. The remaining cost is that each Python file is still read and parsed four times over — once each by the block parser, the token counter, the class detector and radon — before flake8 parses it a fifth.
+- **Improvement:** Share a single parse per file across the detectors. At 750k lines those four passes are ~37s of the ~90s stage sum, so it is the largest remaining win.
 
 ### 4. **Integration with CI/CD**
 
-- **Current State:** Manual execution.
-- **Improvement:** Provide GitHub Actions or other CI/CD integration examples to automate duplicate detection in pull requests.
+- **Current State:** A GitHub Actions workflow runs the test suite, the linters and the format checks on every push. Duplicate detection itself is still run manually.
+- **Improvement:** Add a job that scans the repository with Replicheck itself and comments on the pull request.
 
 ### 5. **Enhanced Reporting**
 

@@ -6,7 +6,7 @@ benchmarks/corpus/
 benchmarks/.tmp/
 
 # .NET build output. Regenerate with:
-#   utils/C#/ComplexityAnalyzer/BuildAndCompile.bash
+#   utils/C#/ComplexityAnalyzer/BuildAndCompile.cmd
 utils/C#/**/bin/
 utils/C#/**/obj/
 

@@ -21,7 +21,7 @@ def _warn_missing_analyzer(exe_path: Path):
         print(
             f"[WARN] C# complexity analyzer not found at {exe_path}; C# "
             "cyclomatic complexity will be skipped. Build it with "
-            "utils/C#/ComplexityAnalyzer/BuildAndCompile.bash",
+            "utils/C#/ComplexityAnalyzer/BuildAndCompile.cmd",
             file=sys.stderr,
         )
         _analyzer_missing_warned = True
