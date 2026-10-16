@@ -236,3 +236,49 @@ def test_run_flake8_warns_when_exit_one_has_no_output(monkeypatch, tmp_path, cap
     err = capsys.readouterr().err
     assert "WARN" in err
     assert "No module named flake8" in err
+
+
+def test_non_python_files_are_not_passed_to_flake8(monkeypatch, tmp_path):
+    """
+    flake8 ignores non-Python files, but passing a large JS tree still cost a
+    process start-up per chunk - half of a JavaScript-only scan. Python files
+    must still reach it.
+    """
+    from replicheck.tools.flake8_runner import run_flake8_for_scan
+
+    calls = _capture_flake8_calls(monkeypatch)
+
+    js = [tmp_path / f"m{i}.js" for i in range(5)]
+    py = [tmp_path / "m.py"]
+    run_flake8_for_scan([*js, *py], ignore_dirs=[])
+
+    assert len(calls) == 1
+    passed = calls[0]
+    assert str(py[0]) in passed
+    assert not any(str(p) in passed for p in js)
+
+
+def test_no_python_files_means_no_flake8_invocation(monkeypatch, tmp_path):
+    from replicheck.tools.flake8_runner import run_flake8_for_scan
+
+    calls = _capture_flake8_calls(monkeypatch)
+
+    unused, bug_safety = run_flake8_for_scan(
+        [tmp_path / "a.js", tmp_path / "b.cs", tmp_path / "c.ts"]
+    )
+
+    assert calls == []
+    assert (unused, bug_safety) == ([], [])
+
+
+def _capture_flake8_calls(monkeypatch):
+    """Record the flake8 command lines, returning the path portion of each."""
+    captured = []
+
+    def fake_run(cmd, *args, **kwargs):
+        if isinstance(cmd, (list, tuple)) and "flake8" in cmd:
+            captured.append([a for a in cmd if not a.startswith("--")])
+        return FakeCompleted()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    return captured

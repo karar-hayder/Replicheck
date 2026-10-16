@@ -91,17 +91,25 @@ STAGE_ORDER = [
 
 
 def count_lines(corpus: Path):
-    """Physical lines and effective (non-blank, non-comment) lines."""
+    """
+    Physical lines and effective (non-blank, non-comment) lines.
+
+    Covers every extension the tool can scan, not just Python: a JavaScript or
+    C# corpus would otherwise report zero lines and divide-by-zero throughput.
+    Line comments are recognised for both styles the tool parses.
+    """
     physical = 0
     effective = 0
     files = 0
-    for path in corpus.rglob("*.py"):
+    for path in sorted(corpus.rglob("*")):
+        if not path.is_file() or path.suffix not in CORPUS_EXTENSIONS:
+            continue
         files += 1
         text = path.read_text(encoding="utf-8", errors="replace")
         for line in text.splitlines():
             physical += 1
             stripped = line.strip()
-            if stripped and not stripped.startswith("#"):
+            if stripped and not stripped.startswith(("#", "//")):
                 effective += 1
     return physical, effective, files
 

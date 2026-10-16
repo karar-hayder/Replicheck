@@ -147,11 +147,21 @@ def run_flake8_for_scan(paths, ignore_dirs=None, budget=PATH_BUDGET_CHARS):
     """
     Run flake8 once for every code both detectors need, and split the result.
 
+    Only Python files are passed. flake8 ignores anything else, but handing it a
+    large non-Python tree still costs a process start-up per chunk: a scan of a
+    JavaScript-only repository was spending half its time in flake8 runs that
+    could not produce a single finding. With no Python files, flake8 is not
+    invoked at all.
+
     Returns (unused_findings, bug_safety_findings). One pass instead of two,
     which halves the dominant cost of a scan.
     """
+    python_paths = [p for p in paths if str(p).lower().endswith(".py")]
+    if not python_paths:
+        return [], []
+
     findings = run_flake8(
-        paths,
+        python_paths,
         select=",".join(UNUSED_CODES + BUG_SAFETY_CODES),
         ignore_dirs=ignore_dirs,
         budget=budget,
