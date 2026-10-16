@@ -8,6 +8,8 @@ tests pin the behaviour that replaced it.
 
 import random
 
+import pytest
+
 from replicheck.tools.Duplication.Duplication import DuplicateDetector
 
 
@@ -206,3 +208,88 @@ def test_groups_are_deterministic():
     second = DuplicateDetector(min_similarity=0.6, min_size=1).find_duplicates(blocks)
 
     assert first == second
+
+
+def reference_groups(token_sets, threshold):
+    """
+    Independent reference: brute-force pairs, then each component's minimum
+    pairwise similarity over the pairs that formed it.
+    """
+    pairs = []
+    for i in range(len(token_sets)):
+        for j in range(i + 1, len(token_sets)):
+            a, b = token_sets[i], token_sets[j]
+            union = len(a | b)
+            if union and len(a & b) / union >= threshold:
+                pairs.append((i, j, len(a & b) / union))
+
+    parent = list(range(len(token_sets)))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    weakest = {}
+    for a, b, similarity in pairs:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+        root = find(a)
+        weakest[root] = min(
+            weakest.get(root, 1.0),
+            weakest.get(rb, 1.0) if ra != rb else 1.0,
+            weakest.get(ra, 1.0) if ra != rb else 1.0,
+            similarity,
+        )
+
+    members = {}
+    for i in range(len(token_sets)):
+        members.setdefault(find(i), []).append(i)
+
+    out = []
+    for root, group in sorted(members.items()):
+        if len(group) < 2:
+            continue
+        out.append((len(group), weakest.get(root, 1.0)))
+    return out
+
+
+def test_reported_similarity_is_always_the_true_minimum():
+    """
+    Regression: merging two components used to strand the absorbed component's
+    weakest link, so a group could report a similarity higher than one of the
+    pairs that formed it. The reviewer's repro is included verbatim, plus a
+    randomised sweep because which component absorbs which depends on iteration
+    order, which is why the bug was intermittent.
+    """
+    # Deterministic repro: J(f0,f2)=0.636, J(f1,f2)=0.462, J(f0,f1)=0.417.
+    sets = [
+        frozenset([3, 4, 5, 6, 8, 9, 11, 13]),
+        frozenset([0, 1, 2, 4, 6, 8, 11, 12, 13]),
+        frozenset([1, 2, 3, 4, 5, 8, 9, 10, 11, 13]),
+    ]
+    detector = DuplicateDetector(min_similarity=0.46, min_size=1)
+    groups = detector.find_duplicates(
+        [block(sorted(s), f"f{i}.py") for i, s in enumerate(sets)]
+    )
+    assert len(groups) == 1
+    assert groups[0]["similarity"] == pytest.approx(0.46153846153846156)
+
+    rng = random.Random(7)  # noqa: S311 - deterministic test fixture
+    for _ in range(400):
+        count = rng.randint(3, 8)
+        token_sets = [
+            frozenset(rng.sample(range(14), rng.randint(5, 13))) for _ in range(count)
+        ]
+        threshold = rng.choice([0.3, 0.4, 0.46, 0.5, 0.6])
+        detector = DuplicateDetector(min_similarity=threshold, min_size=1)
+        groups = detector.find_duplicates(
+            [block(sorted(s), f"m{i}.py") for i, s in enumerate(token_sets)]
+        )
+        got = sorted((g["num_duplicates"], round(g["similarity"], 9)) for g in groups)
+        expected = sorted(
+            (n, round(sim, 9)) for n, sim in reference_groups(token_sets, threshold)
+        )
+        assert got == expected, f"threshold={threshold} sets={token_sets}"

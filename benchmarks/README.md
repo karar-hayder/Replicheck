@@ -146,7 +146,7 @@ ambiguous and the two differ by roughly 6%.
   return nothing. Both now print a warning, so this is visible rather than
   silent.
 - Throughput depends heavily on corpus size. Small corpora are dominated by
-  fixed flake8 process start-up (scanning the tool's own 4,550 lines is mostly
+  fixed flake8 process start-up (scanning the tool's own 6,901 lines is mostly
   flake8 start-up, not analysis), so a lines/sec figure is only meaningful
   alongside the corpus size and the stages included.
 - The synthetic corpora are uniform by construction and **overstate

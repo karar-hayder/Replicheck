@@ -117,7 +117,7 @@ Every report starts with a summary, e.g.:
 
 ## Benchmarks
 
-Measured on Windows 11 with a 12-core Intel i5-12400F, Python 3.12.3 and Node.js
+Measured on Windows 11 with a 6-core / 12-thread Intel i5-12400F, Python 3.12.3 and Node.js
 24.18.0. Default settings, median of 3 runs after a warm-up. Methodology, raw
 JSON and reproduction steps: [benchmarks/README.md](benchmarks/README.md).
 

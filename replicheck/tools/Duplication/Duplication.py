@@ -151,11 +151,22 @@ class DuplicateDetector:
         weakest = {}
         for a, b, similarity in pairs:
             root_a, root_b = find(a), find(b)
-            if root_a != root_b:
-                parent[max(root_a, root_b)] = min(root_a, root_b)
-            root = find(a)
-            if root not in weakest or similarity < weakest[root]:
-                weakest[root] = similarity
+
+            if root_a == root_b:
+                # Both ends already sit in one component, so this edge can only
+                # lower that component's recorded minimum.
+                if similarity < weakest.get(root_a, 1.0):
+                    weakest[root_a] = similarity
+                continue
+
+            # Two components are merging. The new root has to inherit the lower
+            # of the two minimums as well as this edge, because the component
+            # being absorbed is about to stop being a root and its weakest link
+            # would otherwise be stranded - the group would then report a
+            # similarity higher than one of the pairs that formed it.
+            merged = min(weakest.get(root_a, 1.0), weakest.get(root_b, 1.0), similarity)
+            parent[max(root_a, root_b)] = min(root_a, root_b)
+            weakest[find(a)] = merged
 
         members = defaultdict(list)
         for node in range(len(node_blocks)):

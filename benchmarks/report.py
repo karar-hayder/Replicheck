@@ -23,7 +23,7 @@ LABELS = {
     "large": "~375k",
     "xlarge": "~750k",
     "real": "real ~630k",
-    "self": "self ~4.5k",
+    "self": "self ~6.9k",
 }
 
 

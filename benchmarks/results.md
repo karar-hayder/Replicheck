@@ -28,7 +28,7 @@ CLI end-to-end is the authoritative figure: it runs `python main.py --path <corp
 | ~375k | 1,213 | 375,144 | 347,924 | 44.681 | 44.325 | 47.341 | 8,396 |
 | ~750k | 2,426 | 750,093 | 695,702 | 92.220 | 91.205 | 92.717 | 8,134 |
 | real ~630k | 2,189 | 629,946 | 507,174 | 69.942 | 69.920 | 70.321 | 9,007 |
-| self ~4.5k | 45 | 6,901 | 5,651 | 2.362 | 2.327 | 2.434 | 2,922 |
+| self ~6.9k | 45 | 6,901 | 5,651 | 2.362 | 2.327 | 2.434 | 2,922 |
 
 Every scan completed with all detectors returning results. The runtime grows linearly with the amount of code.
 
@@ -36,7 +36,7 @@ Every scan completed with all detectors returning results. The runtime grows lin
 
 Medians across repetitions, timed individually in a single process. `sum_of_stages` excludes the outer `main.py` interpreter start-up, but it still includes every external-tool subprocess (flake8, node, the C# analyzer). Because it is a separate in-process measurement it can differ slightly from the CLI figure — at ~50k it slightly exceeds it, which is measurement variance between the two processes, not a real inversion.
 
-| Stage | ~50k (s) | ~150k (s) | ~375k (s) | ~750k (s) | real ~630k (s) | self ~4.5k (s) |
+| Stage | ~50k (s) | ~150k (s) | ~375k (s) | ~750k (s) | real ~630k (s) | self ~6.9k (s) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `find_files` | 0.016 | 0.035 | 0.086 | 0.170 | 0.153 | 0.009 |
 | `parse_code_blocks` | 0.992 | 2.336 | 5.563 | 11.264 | 5.329 | 0.081 |
@@ -130,7 +130,7 @@ Same work with the file list chunked by the character budget the shipped fix use
 | `unused_F401_F841` | 17 | 50.367 | 8.054 | 0 |
 | `bns_B_S_E800` | 17 | 49.450 | 8.054 | 0 |
 
-**self ~4.5k** (45 files passed to flake8)
+**self ~6.9k** (45 files passed to flake8)
 
 | Invocation | Exit code | Seconds | Command-line chars | Over 32,767 limit | stdout lines | stderr |
 | --- | ---: | ---: | ---: | :---: | ---: | --- |
