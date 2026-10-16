@@ -157,3 +157,82 @@ def test_run_flake8_handles_result_without_returncode(monkeypatch, tmp_path):
 def test_default_budget_fits_windows_limit():
     # The whole command line must stay well under the 32767-char OS ceiling.
     assert PATH_BUDGET_CHARS < 32767
+
+
+def test_run_flake8_for_scan_splits_findings_by_code():
+    """The shared pass partitions findings into the two detectors' groups."""
+    from replicheck.tools.flake8_runner import split_findings
+
+    findings = [
+        {"file": "a.py", "line": 1, "code": "F401", "message": "unused import"},
+        {"file": "a.py", "line": 2, "code": "F841", "message": "unused variable"},
+        {"file": "a.py", "line": 3, "code": "B006", "message": "mutable default"},
+        {"file": "a.py", "line": 4, "code": "S307", "message": "eval"},
+        {"file": "a.py", "line": 5, "code": "E800", "message": "commented out code"},
+    ]
+    unused, bug_safety = split_findings(findings)
+
+    assert [f["code"] for f in unused] == ["F401", "F841"]
+    assert [f["code"] for f in bug_safety] == ["B006", "S307", "E800"]
+
+
+def test_scan_invokes_flake8_exactly_once(monkeypatch, tmp_path):
+    """
+    Regression: unused-import and bug&safety analysis each used to run flake8
+    over the whole file list, so every file was parsed twice. A scan must make
+    a single flake8 call.
+    """
+    from replicheck.runner import ReplicheckRunner
+
+    for i in range(5):
+        (tmp_path / f"m{i}.py").write_text("import os\nx = 1\n", encoding="utf-8")
+
+    flake8_calls = []
+    real_run = subprocess.run
+
+    def counting_run(cmd, *args, **kwargs):
+        if isinstance(cmd, (list, tuple)) and "flake8" in cmd:
+            flake8_calls.append(list(cmd))
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", counting_run)
+
+    runner = ReplicheckRunner(
+        path=tmp_path,
+        min_similarity=0.8,
+        min_size=5,
+        output_format="text",
+        complexity_threshold=10,
+        large_file_threshold=500,
+        large_class_threshold=300,
+        top_n_large=10,
+        extensions=["py"],
+        ignore_dirs=[],
+        output_file=str(tmp_path / "out.txt"),
+    )
+    assert runner.run() == 0
+
+    assert len(flake8_calls) == 1, f"expected one flake8 call, got {len(flake8_calls)}"
+    # The single call must select every code both detectors need.
+    select = next(a for a in flake8_calls[0] if a.startswith("--select="))
+    for code in ("F401", "F841", "B", "S", "E800"):
+        assert code in select
+
+
+def test_run_flake8_warns_when_exit_one_has_no_output(monkeypatch, tmp_path, capsys):
+    """
+    A missing flake8 install exits 1 with only a message on stderr. Exit 1 is
+    normally "findings were reported", so without this check the failure looks
+    exactly like a clean result.
+    """
+
+    def fake_run(cmd, **kwargs):
+        return FakeCompleted(stdout="", stderr="No module named flake8", returncode=1)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    findings = run_flake8([tmp_path / "a.py"], select="F401")
+
+    assert findings == []
+    err = capsys.readouterr().err
+    assert "WARN" in err
+    assert "No module named flake8" in err

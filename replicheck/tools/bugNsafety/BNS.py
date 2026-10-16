@@ -29,9 +29,15 @@ class BugNSafetyAnalyzer:
     Currently supports Python, JS/TS/JSX/TSX, and C# (stub).
     """
 
-    def __init__(self, files: List[Path], ignore_dirs: Optional[List[str]] = None):
+    def __init__(
+        self,
+        files: List[Path],
+        ignore_dirs: Optional[List[str]] = None,
+        findings: Optional[List[Dict[str, Any]]] = None,
+    ):
         self.files = files
         self.ignore_dirs = ignore_dirs
+        self.findings = findings
         self.results = []
 
     def analyze(self) -> None:
@@ -71,7 +77,12 @@ class BugNSafetyAnalyzer:
         """
         Analyze Python files for bugs and safety issues.
         Uses flake8 (with bugbear, bandit, eradicate) for static analysis.
+
+        When the caller supplies findings from a shared flake8 pass, that result
+        is reused instead of invoking flake8 again.
         """
+        if self.findings is not None:
+            return list(self.findings)
         # Use the unified flake8 runner from utils_python.py
         return UP._run_flake8_all(files, ignore_dirs=self.ignore_dirs)
 

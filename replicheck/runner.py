@@ -5,6 +5,7 @@ from replicheck.reporter import Reporter
 from replicheck.tools.bugNsafety.BNS import BugNSafetyAnalyzer
 from replicheck.tools.CyclomaticComplexity.CCA import CyclomaticComplexityAnalyzer
 from replicheck.tools.Duplication.Duplication import DuplicateDetector
+from replicheck.tools.flake8_runner import run_flake8_for_scan
 from replicheck.tools.LargeDetection.LC import LargeClassDetector
 from replicheck.tools.LargeDetection.LF import LargeFileDetector
 from replicheck.tools.TodoFixme.TDFM import TodoFixmeDetector
@@ -61,23 +62,24 @@ class ReplicheckRunner:
             large_classes = large_classes[: self.top_n_large]
         return large_classes
 
-    def analyze_unused_imports_vars(self, files):
+    def analyze_unused_imports_vars(self, files, findings=None):
         # Use UnusedCodeDetector from Unused.py instead of old function
         detector = UnusedCodeDetector()
         detector.find_unused(
             files,
             ignore_dirs=self.ignore_dirs if hasattr(self, "ignore_dirs") else None,
+            findings=findings,
         )
         return detector.results
 
-    def analyze_bugs_and_safety(self, files):
+    def analyze_bugs_and_safety(self, files, findings=None):
         """
         Analyze for bugs and safety issues using BugNSafetyAnalyzer.
         Only runs if BugNSafetyAnalyzer is available.
         """
         if BugNSafetyAnalyzer is None:
             return []
-        analyzer = BugNSafetyAnalyzer(files)
+        analyzer = BugNSafetyAnalyzer(files, findings=findings)
         analyzer.analyze()
         return analyzer.results
 
@@ -125,11 +127,21 @@ class ReplicheckRunner:
             code_blocks = self.parse_code_files(files, parser)
             print("Analyzing code blocks...")
 
+            # One flake8 pass serves both the unused-import and bug&safety
+            # detectors. Running them separately made flake8 parse every file
+            # twice, which was the dominant cost of a scan.
+            unused_findings, bug_safety_findings = run_flake8_for_scan(
+                files,
+                ignore_dirs=self.ignore_dirs if hasattr(self, "ignore_dirs") else None,
+            )
+
             high_complexity = self.analyze_complexity(files)
             large_files = self.analyze_large_files(files)
             large_classes = self.analyze_large_classes(files)
             duplicates = detector.find_duplicates(code_blocks)
-            unused_imports_vars = self.analyze_unused_imports_vars(files)
+            unused_imports_vars = self.analyze_unused_imports_vars(
+                files, findings=unused_findings
+            )
 
             # Use TodoFixmeDetector instead of old function
             todo_fixme_detector = TodoFixmeDetector()
@@ -137,7 +149,9 @@ class ReplicheckRunner:
             todo_fixme_comments = todo_fixme_detector.results
 
             # --- Bugs and Safety Issues ---
-            bns_results = self.analyze_bugs_and_safety(files)
+            bns_results = self.analyze_bugs_and_safety(
+                files, findings=bug_safety_findings
+            )
 
             output_path = Path(self.output_file) if self.output_file else None
             reporter.generate_report(

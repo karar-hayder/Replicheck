@@ -7,13 +7,24 @@ class UnusedCodeDetector:
     def __init__(self):
         self.results = []
 
-    def find_unused(self, files, ignore_dirs=None):
+    def find_unused(self, files, ignore_dirs=None, findings=None):
         """
         Find unused imports and variables in the given files.
         Sets self.results to a list of findings.
+
+        Args:
+            files: Files to analyze.
+            ignore_dirs: Directories to ignore, used only when running flake8 here.
+            findings: Pre-computed findings from a shared flake8 pass. When
+                given, flake8 is not invoked again.
         """
         py_files = [f for f in files if str(f).lower().endswith(".py")]
         # Room for other languages: js_files, ts_files, cs_files, etc.
+
+        if findings is not None:
+            # A scan already ran flake8 over every file; reuse that result.
+            self.results = list(findings)
+            return
 
         results = []
         if py_files:

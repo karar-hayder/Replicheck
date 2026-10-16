@@ -90,17 +90,21 @@ def run_flake8(
             continue
 
         # flake8 exits 0 when clean and 1 when it reports findings; both are
-        # normal. Anything else means the chunk did not really run.
+        # normal. Exit 1 with nothing on stdout means it never really ran: a
+        # missing install exits 1 with only a message on stderr, which would
+        # otherwise be indistinguishable from "no findings".
         returncode = getattr(result, "returncode", 0)
-        if returncode not in (0, 1):
-            stderr = getattr(result, "stderr", "") or ""
+        stdout = result.stdout or ""
+        stderr = getattr(result, "stderr", "") or ""
+        failed = returncode not in (0, 1) or (returncode == 1 and not stdout.strip())
+        if failed:
             print(
                 f"[WARN] flake8 exited {returncode} over {len(chunk)} file(s): "
                 f"{stderr.strip()[:200]}",
                 file=sys.stderr,
             )
 
-        for line in (result.stdout or "").splitlines():
+        for line in stdout.splitlines():
             match = _FINDING_PATTERN.match(line)
             if match:
                 findings.append(
@@ -113,3 +117,43 @@ def run_flake8(
                 )
 
     return findings
+
+
+# The codes the unused-import and bug&safety detectors need. They used to run
+# flake8 separately over the same file list, so every file was parsed twice.
+UNUSED_CODES = ("F401", "F841")
+BUG_SAFETY_CODES = ("B", "S", "E800")
+
+
+def split_findings(findings):
+    """
+    Partition flake8 findings into (unused, bug_safety) groups.
+
+    B and S are selected by prefix, so any code starting with either letter
+    belongs to bug&safety; E800 is eradicate's commented-out-code check.
+    """
+    unused = []
+    bug_safety = []
+    for finding in findings:
+        code = finding["code"]
+        if code in UNUSED_CODES:
+            unused.append(finding)
+        elif code in BUG_SAFETY_CODES or code[:1] in ("B", "S"):
+            bug_safety.append(finding)
+    return unused, bug_safety
+
+
+def run_flake8_for_scan(paths, ignore_dirs=None, budget=PATH_BUDGET_CHARS):
+    """
+    Run flake8 once for every code both detectors need, and split the result.
+
+    Returns (unused_findings, bug_safety_findings). One pass instead of two,
+    which halves the dominant cost of a scan.
+    """
+    findings = run_flake8(
+        paths,
+        select=",".join(UNUSED_CODES + BUG_SAFETY_CODES),
+        ignore_dirs=ignore_dirs,
+        budget=budget,
+    )
+    return split_findings(findings)
