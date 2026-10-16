@@ -26,48 +26,15 @@ class UnusedCodeDetector:
         Run flake8 on the given list of paths and return a list of unused imports and variables.
 
         Args:
-            paths (list[str or Path]): List of files to analyze.
+            files (list[str or Path]): List of files to analyze.
             ignore_dirs (list[str], optional): Directories to ignore.
 
         Returns:
             List[dict]: Each dict contains file, line, code, and message for each unused import/var.
         """
-        import re
-        import subprocess
-        import sys
+        from replicheck.tools.flake8_runner import run_flake8
 
         if not files:
             return []
 
-        cmd = [sys.executable, "-m", "flake8", "--select=F401,F841"]
-        if ignore_dirs:
-            for d in ignore_dirs:
-                cmd.append(f"--exclude={d}")
-        cmd.extend([str(f) for f in files])
-
-        try:
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                encoding="utf-8",
-                check=False,
-            )
-        except Exception:
-            return []
-
-        unused = []
-        # flake8 output: path:line:col: code message
-        pattern = re.compile(r"^(.*?):(\d+):\d+:\s+(F401|F841)\s+(.*)$")
-        for line in result.stdout.splitlines():
-            m = pattern.match(line)
-            if m:
-                unused.append(
-                    {
-                        "file": m.group(1),
-                        "line": int(m.group(2)),
-                        "code": m.group(3),
-                        "message": m.group(4).strip(),
-                    }
-                )
-        return unused
+        return run_flake8(files, select="F401,F841", ignore_dirs=ignore_dirs)
