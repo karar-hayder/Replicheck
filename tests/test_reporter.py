@@ -646,3 +646,44 @@ def test_reporter_markdown_console_output(capsys):
     captured = capsys.readouterr()
     assert "# Code Quality Report" in captured.out
     assert "## Code Duplications" in captured.out
+
+
+def test_duplicate_group_locations_are_capped(tmp_path):
+    """
+    A similarity group can span thousands of blocks. The report must stay
+    readable while still reporting the true count.
+    """
+    from replicheck.reporter import Reporter
+
+    locations = [
+        {"file": f"m{i}.py", "start_line": 1, "end_line": 5} for i in range(30)
+    ]
+    group = {
+        "size": 10,
+        "num_duplicates": 30,
+        "locations": locations,
+        "cross_file": True,
+        "tokens": ["a"] * 10,
+        "similarity": 0.9,
+    }
+
+    reporter = Reporter(output_format="markdown")
+    out_file = tmp_path / "report.md"
+    reporter.generate_report(
+        output_file=out_file,
+        duplicates=[group],
+        complexity_results=[],
+        large_files=[],
+        large_classes=[],
+        unused=[],
+        todo_fixme=[],
+        bns_results=[],
+    )
+
+    content = out_file.read_text(encoding="utf-8")
+    assert "m19.py" in content
+    assert "m20.py" not in content
+    assert "... and 10 more location(s)" in content
+    # The full count and the similarity are still reported.
+    assert "count=30" in content
+    assert "(similarity: 0.90)" in content

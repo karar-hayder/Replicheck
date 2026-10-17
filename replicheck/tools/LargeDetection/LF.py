@@ -86,6 +86,7 @@ class LargeFileDetector:
                     }
                 )
         large_files = sorted(large_files, key=lambda x: x["token_count"], reverse=True)
-        if top_n is not None:
+        # 0 means "all", as --top-n-large documents; only a positive N truncates.
+        if top_n:
             large_files = large_files[:top_n]
         self.results = large_files

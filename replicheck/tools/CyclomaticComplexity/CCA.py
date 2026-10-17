@@ -31,10 +31,10 @@ class CyclomaticComplexityAnalyzer:
 
         for f in py_files:
             results.extend(self._analyze_python(f))
-        for f in js_files:
-            results.extend(self._analyze_js(f))
-        for f in cs_files:
-            results.extend(self._analyze_cs(f))
+        if js_files:
+            results.extend(self._analyze_js_batch(js_files))
+        if cs_files:
+            results.extend(self._analyze_cs_batch(cs_files))
         self.results = results
 
     def _analyze_python(self, file_path: Path) -> List[Dict[str, Any]]:
@@ -45,6 +45,18 @@ class CyclomaticComplexityAnalyzer:
 
         return analyze_py_cyclomatic_complexity(file_path, self.threshold)
 
+    def _analyze_js_batch(self, files: List[Path]) -> List[Dict[str, Any]]:
+        """
+        Analyze all JS/TS/JSX/TSX files in a few Node invocations.
+
+        Node start-up is ~223 ms per invocation and does not depend on file
+        size, so calling it once per file made a large JS repository take
+        minutes. Batching amortises that across files.
+        """
+        from .js_utils import analyze_js_cyclomatic_complexity_batch
+
+        return analyze_js_cyclomatic_complexity_batch(files, self.threshold)
+
     def _analyze_js(self, file_path: Path) -> List[Dict[str, Any]]:
         """
         Analyze cyclomatic complexity of a JS/TS/JSX/TSX file.
@@ -52,6 +64,18 @@ class CyclomaticComplexityAnalyzer:
         from .js_utils import analyze_js_cyclomatic_complexity
 
         return analyze_js_cyclomatic_complexity(file_path, self.threshold)
+
+    def _analyze_cs_batch(self, files: List[Path]) -> List[Dict[str, Any]]:
+        """
+        Analyze all C# files in a few analyzer invocations.
+
+        The analyzer's start-up is ~214 ms per invocation and does not depend
+        on file size, so calling it once per file made a large C# repository
+        take minutes.
+        """
+        from .cs_utils import analyze_cs_cyclomatic_complexity_batch
+
+        return analyze_cs_cyclomatic_complexity_batch(files, self.threshold)
 
     def _analyze_cs(self, file_path: Path) -> List[Dict[str, Any]]:
         """

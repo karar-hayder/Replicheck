@@ -10,7 +10,7 @@ A Python tool for detecting code duplications and code quality issues in your pr
 - Detect Unused imports and vars (Python)
 - Find TODO/FIXME comments across your codebase
 - Support for Python, JavaScript, JSX, Typescript, TSX and C# files
-- Configurable minimum block size for duplicate detection
+- Configurable similarity threshold and minimum block size for duplicate detection
 - Ignores virtual environments and user-specified directories
 - Detailed reporting in text, JSON, or Markdown format
 - Summary section at the top of every report
@@ -37,7 +37,7 @@ python main.py --path /path/to/code
 ### Options
 
 - `--path`: Directory to analyze (required)
-- `--min-similarity`: Minimum similarity threshold (0.0 to 1.0, default: 0.8). Accepted but currently has no effect — only exact duplicates are reported.
+- `--min-similarity`: Minimum similarity for two blocks to be reported together (0.0 to 1.0, default: 0.8). Similarity is the Jaccard ratio of the blocks' token sets, so `1.0` reports only exact matches and lower values also catch near-duplicates. A group reports the *lowest* similarity among its members.
 - `--min-size`: Minimum code block size in tokens (default: 50)
 - `--output-format`: Output format (`text`, `json`, or `markdown`, default: `text`)
 - `--output-file`: Path to save the report (optional)
@@ -47,6 +47,49 @@ python main.py --path /path/to/code
 - `--large-file-threshold`: Token count threshold to flag large files (default: 500)
 - `--large-class-threshold`: Token count threshold to flag large classes (default: 300)
 - `--top-n-large`: Show only the top N largest files/classes (default: 10, 0=all)
+- `--cache`: Reuse per-file results from the previous run in this directory and analyse only the files that changed. Off by default — see [Caching](#caching).
+- `--cache-file`: Where to keep the cache (default: `.replicheck-cache.json` inside the scanned directory)
+- `--flake8-codes`: Comma-separated flake8 codes to select, e.g. `F401,F841`. flake8 is the largest cost of a scan, so narrowing this is the main speed lever. Omitted means every code the detectors need (`F401,F841,B,S,E800`).
+- `--full-scan`: Force a complete scan: ignore any cache and use the full flake8 code set. Already the default; this is an explicit override for when the fast paths are enabled elsewhere.
+
+### Caching
+
+A repeat scan of an unchanged tree costs exactly what the first scan did, which
+is the wrong trade while editing. `--cache` stores each file's own results —
+its parsed blocks, complexity findings, size metrics, lint findings and comments
+— keyed by a hash of that file's content, and the next run analyses only the
+files that changed.
+
+Duplicate grouping is deliberately *not* cached: it compares blocks across
+files, so it always runs over the combined set.
+
+Caching is **off by default**, because a cache that answers with stale findings
+is worse than a slow scan. What it will not do:
+
+- A file whose content changed is always re-analysed.
+- The whole cache is discarded when the scan root, the cache format, or any
+  setting that affects a per-file result changes (`--min-size`,
+  `--complexity-threshold`, the two size thresholds, `--flake8-codes`, or
+  `--extensions`), so it can never answer for a different configuration.
+- A corrupt or unreadable cache is ignored with a warning, never trusted.
+- `--full-scan` bypasses it entirely.
+
+```bash
+# First run analyses everything; later runs only what changed.
+python main.py --path ./src --cache
+```
+
+On the 50k-line corpus a cold scan takes 5.8s and a warm one **0.32s** — about
+18x, since the warm run only hashes the files, groups the cached blocks and
+writes the report.
+
+`--flake8-codes` is the other speed lever, and the only one that trades findings
+for time — trimming it drops whole categories, so it is opt-in:
+
+```bash
+# Unused imports and variables only: skips bug and security analysis.
+python main.py --path ./src --cache --flake8-codes F401,F841
+```
 
 Example:
 
@@ -113,47 +156,67 @@ Every report starts with a summary, e.g.:
 
 - In Markdown reports, file paths are clickable and link to the relevant file/line (works in GitHub, VSCode, etc.).
 - In supported terminals, file paths are clickable if your terminal supports OSC 8 hyperlinks.
+- A duplication group lists at most 20 locations, then `... and N more location(s)`. The `count=` on the group line is always the true total. A low `--min-similarity` on a repetitive codebase can chain many blocks into one large group, so this keeps the report readable.
 
 ## Benchmarks
 
-Measured on Windows 11 with a 12-core Intel i5-12400F, Python 3.12.3 and Node.js
+Measured on Windows 11 with a 6-core / 12-thread Intel i5-12400F, Python 3.12.3 and Node.js
 24.18.0. Default settings, median of 3 runs after a warm-up. Methodology, raw
 JSON and reproduction steps: [benchmarks/README.md](benchmarks/README.md).
 
 | Corpus | Lines of code | Files | Scan time | Throughput |
 | --- | ---: | ---: | ---: | ---: |
-| Replicheck's own source | 4,550 | 37 | 5.2 s | 880 lines/sec |
-| Synthetic | 50,211 | 166 | 16.3 s | 3,081 lines/sec |
-| Synthetic | 150,170 | 485 | 38.5 s | 3,904 lines/sec |
-| Synthetic | 375,144 | 1,213 | 92.6 s | 4,053 lines/sec |
-| Synthetic | 750,093 | 2,426 | 172.9 s | 4,339 lines/sec |
-| Real-world | 630,836 | 2,189 | 140.9 s | 4,477 lines/sec |
+| Replicheck's own repository | 6,901 | 45 | 2.2 s | 3,130 lines/sec |
+| Synthetic | 50,211 | 166 | 6.0 s | 8,344 lines/sec |
+| Synthetic | 150,170 | 485 | 16.9 s | 8,868 lines/sec |
+| Synthetic | 375,144 | 1,213 | 40.6 s | 9,239 lines/sec |
+| Synthetic | 750,093 | 2,426 | 79.3 s | 9,455 lines/sec |
+| Real-world | 630,679 | 2,189 | 57.5 s | 10,965 lines/sec |
 
-Runtime is linear in the amount of code, settling at roughly **4,300–4,500
+Runtime is linear in the amount of code, settling at roughly **8,300–9,500
 lines/sec**. The real-world row is 630k lines of genuine third-party library
-code (pip, pytest, black, Pygments, setuptools); it lands within 3% of the
-synthetic 750k rate, so the synthetic figures are not flattering themselves.
+code (pip, pytest, black, Pygments, setuptools); it is the fastest per line,
+because generated code repeats itself while real code does not.
 
-Two-thirds of a scan is flake8, not Replicheck's own analysis:
+Roughly half of a scan is flake8, not Replicheck's own analysis:
 
 | Stage | Share of scan time (~750k corpus) |
 | --- | ---: |
-| Unused imports/variables (flake8) | 37% |
-| Bugs and safety (flake8) | 37% |
-| Parse code blocks | 8% |
-| Cyclomatic complexity | 7% |
-| Large class detection | 5.5% |
-| Large file detection | 4.9% |
-| Duplicate detection | 0.04% |
+| Unused imports/variables and bugs/safety (one flake8 pass) | 50.9% |
+| Parse code blocks | 14.4% |
+| Cyclomatic complexity | 13.8% |
+| Large class detection | 10.2% |
+| Large file detection | 9.3% |
+| Duplicate detection | 0.7% |
 
-Excluding the two flake8-backed stages, the analysis pipeline itself runs at
-about **17,000 lines/sec** on synthetic code and **26,000 lines/sec** on real
-code.
+Excluding flake8, the analysis pipeline itself runs at about **19,000 lines/sec**
+on synthetic code and **30,000 lines/sec** on real code.
 
 Small repositories are start-up bound, not throughput bound: scanning
-Replicheck's own 4,550 lines takes 5.2 s, of which 97% is flake8 process
+Replicheck's own 6,901 lines takes 2.2 s, of which 87% is flake8 process
 start-up. Quote a throughput figure together with the scope and the size of the
 corpus, or it will not mean much.
+
+### Multi-language path
+
+JS/TS and C# cyclomatic complexity shell out to a helper, and process start-up
+dominated it: measured at 223 ms per JavaScript file and 214 ms per C# file,
+**independent of file size**, so a 1,976-file tree spent minutes in that one
+stage. Both now pass 50 files per invocation. flake8 was also being handed
+non-Python files, which it ignores — that alone cost 18.6 s of a 36.2 s
+JavaScript-only scan.
+
+| Path | Before | After |
+| --- | ---: | ---: |
+| JS complexity, 1,976 files / 112,500 lines | ~394 s | 11.5 s |
+| C# complexity, 100 files | 20.4 s | 0.5 s |
+| JavaScript repository, end to end | 36.2 s | 17.8 s |
+
+> These were measured against a JavaScript tree copied from `utils/node_modules`
+> and a temporary C# sample, **not against committed corpora**, so the benchmark
+> suite does not yet verify them. Adding JS/TS and C# corpora is tracked in
+> [#27](https://github.com/karar-hayder/Replicheck/issues/27); until then treat
+> the figures above as one-off measurements and the table above as Python-only.
 
 ## Development
 

@@ -6,6 +6,7 @@ Replicheck - A tool for detecting code duplications in projects.
 import argparse
 import sys
 
+from replicheck.cache import CACHE_FILENAME
 from replicheck.runner import ReplicheckRunner
 
 
@@ -99,6 +100,44 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         help="File extensions to include (default: .py, .js, .jsx, .cs, .ts, .tsx)",
     )
+    parser.add_argument(
+        "--cache",
+        action="store_true",
+        help=(
+            "reuse per-file results from the previous run in this directory and "
+            "analyse only the files that changed. Off by default: a cache that "
+            "answers with stale findings is worse than a slow scan."
+        ),
+    )
+    parser.add_argument(
+        "--cache-file",
+        type=str,
+        default=None,
+        help=(
+            "where to keep the cache. Defaults to "
+            f"{CACHE_FILENAME} inside the scanned directory"
+        ),
+    )
+    parser.add_argument(
+        "--flake8-codes",
+        type=str,
+        default=None,
+        help=(
+            "comma-separated flake8 codes to select, e.g. F401,F841. flake8 is "
+            "the largest cost of a scan, so narrowing this is the main speed "
+            "lever. Omitted means every code the detectors need "
+            "(F401,F841,B,S,E800) - trimming drops findings, so it is opt-in."
+        ),
+    )
+    parser.add_argument(
+        "--full-scan",
+        action="store_true",
+        help=(
+            "force a complete scan: ignore any cache and use the full flake8 "
+            "code set. This is already the default; the flag is an explicit "
+            "override for when the fast paths are enabled elsewhere."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -126,5 +165,9 @@ if __name__ == "__main__":
             large_class_threshold=args.large_class_threshold,
             top_n_large=args.top_n_large,
             extensions=args.extensions,
+            cache=args.cache,
+            cache_file=args.cache_file,
+            flake8_codes=args.flake8_codes,
+            full_scan=args.full_scan,
         )
     )

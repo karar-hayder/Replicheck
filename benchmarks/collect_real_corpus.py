@@ -60,6 +60,16 @@ def main():
         default=None,
         help="Only copy from these top-level entries of the source directory",
     )
+    parser.add_argument(
+        "--skip-dirs",
+        nargs="*",
+        default=[],
+        help=(
+            "Directory names to skip wherever they appear. Needed when the "
+            "source is a project root, so vendored trees like node_modules and "
+            ".venv are left out."
+        ),
+    )
     args = parser.parse_args()
 
     source = Path(args.source).resolve()
@@ -76,11 +86,15 @@ def main():
 
     copied = 0
     skipped = 0
+    skip_dirs = set(args.skip_dirs)
     for path in source.rglob("*"):
         if not path.is_file() or path.suffix.lower() not in extensions:
             continue
         relative = path.relative_to(source)
         if args.include and relative.parts[0] not in args.include:
+            skipped += 1
+            continue
+        if skip_dirs and any(part in skip_dirs for part in relative.parts):
             skipped += 1
             continue
         destination = out / relative

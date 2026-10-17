@@ -127,6 +127,7 @@ class LargeClassDetector:
                 results = self._find_large_cs_classes(file_path, token_threshold)
             all_results.extend(results)
         all_results = sorted(all_results, key=lambda x: x["token_count"], reverse=True)
-        if top_n is not None:
+        # 0 means "all", as --top-n-large documents; only a positive N truncates.
+        if top_n:
             all_results = all_results[:top_n]
         self.results = all_results

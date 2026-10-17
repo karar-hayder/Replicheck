@@ -25,6 +25,15 @@ CS_ANALYZER = (
     / "ComplexityAnalyzer.exe"
 )
 
+# JS complexity needs Node.js *and* the npm package the helper script imports.
+# utils/node_modules is gitignored, so a fresh clone has neither.
+JS_HELPER = REPO_ROOT / "utils" / "helpers.js"
+JS_DEPS = REPO_ROOT / "utils" / "node_modules" / "typhonjs-escomplex"
+
+
+def js_complexity_available():
+    return shutil.which("node") is not None and JS_HELPER.exists() and JS_DEPS.exists()
+
 
 def create_py_file(tmp_path, name, content):
     file_path = tmp_path / name
@@ -134,7 +143,7 @@ def test_utils_analyze_cyclomatic_complexity_all_types_with_cca(tmp_path):
 
     assert any(r["file"].endswith("cc.py") for r in results)
 
-    if shutil.which("node") is not None:
+    if js_complexity_available():
         assert any(r["file"].endswith("cc.js") for r in results)
     if CS_ANALYZER.exists():
         assert any(r["file"].endswith("cc.cs") for r in results)
@@ -301,9 +310,10 @@ def test_runner_analyze_bugs_and_safety_none(monkeypatch, tmp_path):
 def test_runner_analyze_bugs_and_safety_available(tmp_path):
     # Simulate BugNSafetyAnalyzer present and returns dummy results
     class DummyBNS:
-        def __init__(self, files, ignore_dirs=None):
+        def __init__(self, files, ignore_dirs=None, findings=None):
             self.files = files
             self.ignore_dirs = ignore_dirs
+            self.findings = findings
             self.results = []
 
         def analyze(self):
@@ -394,7 +404,9 @@ def test_runner_analyze_complexity_all_types(tmp_path):
 
 
 def test_runner_run_catches_exception(tmp_path, monkeypatch):
-    # Simulate an exception in run
+    # Simulate an exception in run. A file has to exist, otherwise there is
+    # nothing to parse and the parser that raises is never constructed.
+    create_py_file(tmp_path, "x.py", "def f(a):\n    return a\n")
     runner = ReplicheckRunner(
         path=tmp_path,
         min_similarity=0.8,
