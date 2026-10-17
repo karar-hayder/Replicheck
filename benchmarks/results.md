@@ -23,12 +23,12 @@ CLI end-to-end is the authoritative figure: it runs `python main.py --path <corp
 
 | Corpus | Files | Physical lines | Effective lines | CLI median (s) | CLI min (s) | CLI max (s) | Lines/sec |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ~50k | 166 | 50,211 | 46,591 | 8.528 | 8.240 | 8.552 | 5,888 |
-| ~150k | 485 | 150,170 | 139,358 | 19.347 | 19.315 | 21.320 | 7,762 |
-| ~375k | 1,213 | 375,144 | 347,924 | 44.681 | 44.325 | 47.341 | 8,396 |
-| ~750k | 2,426 | 750,093 | 695,702 | 92.220 | 91.205 | 92.717 | 8,134 |
-| real ~630k | 2,189 | 629,946 | 507,174 | 69.942 | 69.920 | 70.321 | 9,007 |
-| self ~6.9k | 45 | 6,901 | 5,651 | 2.362 | 2.327 | 2.434 | 2,922 |
+| ~50k | 166 | 50,211 | 46,591 | 6.018 | 5.933 | 6.149 | 8,344 |
+| ~150k | 485 | 150,170 | 139,358 | 16.933 | 16.830 | 17.279 | 8,868 |
+| ~375k | 1,213 | 375,144 | 347,924 | 40.605 | 40.383 | 41.610 | 9,239 |
+| ~750k | 2,426 | 750,093 | 695,702 | 79.334 | 78.744 | 80.085 | 9,455 |
+| real ~630k | 2,190 | 630,679 | 507,716 | 57.519 | 57.070 | 57.543 | 10,965 |
+| self ~6.9k | 45 | 6,901 | 5,651 | 2.205 | 2.201 | 2.210 | 3,130 |
 
 Every scan completed with all detectors returning results. The runtime grows linearly with the amount of code.
 
@@ -38,30 +38,30 @@ Medians across repetitions, timed individually in a single process. `sum_of_stag
 
 | Stage | ~50k (s) | ~150k (s) | ~375k (s) | ~750k (s) | real ~630k (s) | self ~6.9k (s) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `find_files` | 0.016 | 0.035 | 0.086 | 0.170 | 0.153 | 0.009 |
-| `parse_code_blocks` | 0.992 | 2.336 | 5.563 | 11.264 | 5.329 | 0.081 |
-| `complexity` | 0.852 | 2.174 | 5.207 | 10.601 | 4.692 | 0.078 |
-| `large_files` | 0.406 | 1.155 | 3.215 | 7.143 | 5.270 | 0.043 |
-| `large_classes` | 0.649 | 1.578 | 3.837 | 7.813 | 4.246 | 0.067 |
-| `duplicates` | 0.078 | 0.238 | 0.429 | 0.547 | 0.215 | 0.002 |
-| `flake8_checks` | 5.172 | 11.759 | 26.095 | 52.627 | 49.251 | 1.957 |
-| `todo_fixme` | 0.027 | 0.060 | 0.153 | 0.263 | 0.420 | 0.007 |
-| `report` | 0.003 | 0.008 | 0.021 | 0.045 | 0.009 | 0.001 |
-| `sum_of_stages` | 8.268 | 19.306 | 44.779 | 90.035 | 69.717 | 2.226 |
+| `find_files` | 0.012 | 0.034 | 0.085 | 0.166 | 0.140 | 0.007 |
+| `parse_code_blocks` | 0.750 | 2.451 | 5.797 | 11.512 | 5.504 | 0.076 |
+| `complexity` | 0.707 | 2.074 | 5.345 | 11.037 | 4.842 | 0.066 |
+| `large_files` | 0.353 | 1.126 | 3.218 | 7.435 | 5.444 | 0.039 |
+| `large_classes` | 0.517 | 1.541 | 3.940 | 8.155 | 4.365 | 0.056 |
+| `duplicates` | 0.063 | 0.226 | 0.406 | 0.522 | 0.225 | 0.001 |
+| `flake8_checks` | 3.084 | 9.465 | 21.256 | 40.717 | 37.459 | 1.807 |
+| `todo_fixme` | 0.022 | 0.061 | 0.145 | 0.255 | 0.453 | 0.006 |
+| `report` | 0.003 | 0.008 | 0.020 | 0.041 | 0.009 | 0.001 |
+| `sum_of_stages` | 5.508 | 17.010 | 40.274 | 79.963 | 58.577 | 2.068 |
 
-Share of core analysis time on the ~750k corpus (90.035s total):
+Share of core analysis time on the ~750k corpus (79.963s total):
 
 | Stage | Seconds | Share |
 | --- | ---: | ---: |
-| `flake8_checks` | 52.627 | 58.5% |
-| `parse_code_blocks` | 11.264 | 12.5% |
-| `complexity` | 10.601 | 11.8% |
-| `large_classes` | 7.813 | 8.7% |
-| `large_files` | 7.143 | 7.9% |
-| `duplicates` | 0.547 | 0.6% |
-| `todo_fixme` | 0.263 | 0.3% |
-| `find_files` | 0.170 | 0.2% |
-| `report` | 0.045 | 0.1% |
+| `flake8_checks` | 40.717 | 50.9% |
+| `parse_code_blocks` | 11.512 | 14.4% |
+| `complexity` | 11.037 | 13.8% |
+| `large_classes` | 8.155 | 10.2% |
+| `large_files` | 7.435 | 9.3% |
+| `duplicates` | 0.522 | 0.7% |
+| `todo_fixme` | 0.255 | 0.3% |
+| `find_files` | 0.166 | 0.2% |
+| `report` | 0.041 | 0.1% |
 
 ## flake8 invocations (pre-fix single-command form)
 
@@ -71,22 +71,22 @@ This probe deliberately rebuilds the *pre-fix* invocation: one flake8 command co
 
 | Invocation | Exit code | Seconds | Command-line chars | Over 32,767 limit | stdout lines | stderr |
 | --- | ---: | ---: | ---: | :---: | ---: | --- |
-| `unused_F401_F841` | 1 | 3.360 | 19,170 | no | 1,131 | (empty) |
-| `bns_B_S_E800` | 1 | 3.275 | 18,868 | no | 644 | (empty) |
+| `unused_F401_F841` | 1 | 3.059 | 19,170 | no | 1,131 | (empty) |
+| `bns_B_S_E800` | 1 | 3.095 | 18,868 | no | 644 | (empty) |
 
 **~150k** (485 files passed to flake8)
 
 | Invocation | Exit code | Seconds | Command-line chars | Over 32,767 limit | stdout lines | stderr |
 | --- | ---: | ---: | ---: | :---: | ---: | --- |
-| `unused_F401_F841` | FileNotFoundError: [WinError 206] The filename or extension is too long | 0.004 | 55,688 | YES | 0 | (empty) |
+| `unused_F401_F841` | FileNotFoundError: [WinError 206] The filename or extension is too long | 0.003 | 55,688 | YES | 0 | (empty) |
 | `bns_B_S_E800` | FileNotFoundError: [WinError 206] The filename or extension is too long | 0.003 | 55,386 | YES | 0 | (empty) |
 
 Same work with the file list chunked by the character budget the shipped fix uses (`replicheck/tools/flake8_runner.py`), so this is the real post-fix cost. Each chunk pays one process start-up; the start-up share is shown separately because a response-file implementation would run flake8 once and cost less.
 
 | Invocation | Chunks | Total seconds | Estimated start-up | Failed chunks |
 | --- | ---: | ---: | ---: | ---: |
-| `unused_F401_F841` | 4 | 11.522 | 1.952 | 0 |
-| `bns_B_S_E800` | 4 | 11.160 | 1.952 | 0 |
+| `unused_F401_F841` | 3 | 9.410 | 1.329 | 0 |
+| `bns_B_S_E800` | 3 | 9.427 | 1.329 | 0 |
 
 **~375k** (1,213 files passed to flake8)
 
@@ -99,22 +99,22 @@ Same work with the file list chunked by the character budget the shipped fix use
 
 | Invocation | Chunks | Total seconds | Estimated start-up | Failed chunks |
 | --- | ---: | ---: | ---: | ---: |
-| `unused_F401_F841` | 9 | 26.809 | 4.153 | 0 |
-| `bns_B_S_E800` | 9 | 26.434 | 4.153 | 0 |
+| `unused_F401_F841` | 6 | 21.098 | 2.932 | 0 |
+| `bns_B_S_E800` | 6 | 21.306 | 2.932 | 0 |
 
 **~750k** (2,426 files passed to flake8)
 
 | Invocation | Exit code | Seconds | Command-line chars | Over 32,767 limit | stdout lines | stderr |
 | --- | ---: | ---: | ---: | :---: | ---: | --- |
 | `unused_F401_F841` | FileNotFoundError: [WinError 206] The filename or extension is too long | 0.016 | 276,866 | YES | 0 | (empty) |
-| `bns_B_S_E800` | FileNotFoundError: [WinError 206] The filename or extension is too long | 0.015 | 276,564 | YES | 0 | (empty) |
+| `bns_B_S_E800` | FileNotFoundError: [WinError 206] The filename or extension is too long | 0.018 | 276,564 | YES | 0 | (empty) |
 
 Same work with the file list chunked by the character budget the shipped fix uses (`replicheck/tools/flake8_runner.py`), so this is the real post-fix cost. Each chunk pays one process start-up; the start-up share is shown separately because a response-file implementation would run flake8 once and cost less.
 
 | Invocation | Chunks | Total seconds | Estimated start-up | Failed chunks |
 | --- | ---: | ---: | ---: | ---: |
-| `unused_F401_F841` | 18 | 52.488 | 8.532 | 0 |
-| `bns_B_S_E800` | 18 | 52.795 | 8.532 | 0 |
+| `unused_F401_F841` | 11 | 41.356 | 4.871 | 0 |
+| `bns_B_S_E800` | 11 | 41.098 | 4.871 | 0 |
 
 **real ~630k** (2,137 files passed to flake8)
 
@@ -127,12 +127,12 @@ Same work with the file list chunked by the character budget the shipped fix use
 
 | Invocation | Chunks | Total seconds | Estimated start-up | Failed chunks |
 | --- | ---: | ---: | ---: | ---: |
-| `unused_F401_F841` | 17 | 50.367 | 8.054 | 0 |
-| `bns_B_S_E800` | 17 | 49.450 | 8.054 | 0 |
+| `unused_F401_F841` | 10 | 36.710 | 4.541 | 0 |
+| `bns_B_S_E800` | 10 | 36.093 | 4.541 | 0 |
 
 **self ~6.9k** (45 files passed to flake8)
 
 | Invocation | Exit code | Seconds | Command-line chars | Over 32,767 limit | stdout lines | stderr |
 | --- | ---: | ---: | ---: | :---: | ---: | --- |
-| `unused_F401_F841` | 1 | 1.957 | 5,751 | no | 3 | (empty) |
-| `bns_B_S_E800` | 1 | 1.897 | 5,449 | no | 8 | (empty) |
+| `unused_F401_F841` | 1 | 1.811 | 5,751 | no | 3 | (empty) |
+| `bns_B_S_E800` | 1 | 1.806 | 5,449 | no | 8 | (empty) |

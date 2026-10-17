@@ -166,34 +166,34 @@ JSON and reproduction steps: [benchmarks/README.md](benchmarks/README.md).
 
 | Corpus | Lines of code | Files | Scan time | Throughput |
 | --- | ---: | ---: | ---: | ---: |
-| Replicheck's own repository | 6,901 | 45 | 2.4 s | 2,922 lines/sec |
-| Synthetic | 50,211 | 166 | 8.5 s | 5,888 lines/sec |
-| Synthetic | 150,170 | 485 | 19.3 s | 7,762 lines/sec |
-| Synthetic | 375,144 | 1,213 | 44.7 s | 8,396 lines/sec |
-| Synthetic | 750,093 | 2,426 | 92.2 s | 8,134 lines/sec |
-| Real-world | 629,946 | 2,189 | 69.9 s | 9,007 lines/sec |
+| Replicheck's own repository | 6,901 | 45 | 2.2 s | 3,130 lines/sec |
+| Synthetic | 50,211 | 166 | 6.0 s | 8,344 lines/sec |
+| Synthetic | 150,170 | 485 | 16.9 s | 8,868 lines/sec |
+| Synthetic | 375,144 | 1,213 | 40.6 s | 9,239 lines/sec |
+| Synthetic | 750,093 | 2,426 | 79.3 s | 9,455 lines/sec |
+| Real-world | 630,679 | 2,189 | 57.5 s | 10,965 lines/sec |
 
-Runtime is linear in the amount of code, settling at roughly **8,100–9,000
+Runtime is linear in the amount of code, settling at roughly **8,300–9,500
 lines/sec**. The real-world row is 630k lines of genuine third-party library
 code (pip, pytest, black, Pygments, setuptools); it is the fastest per line,
 because generated code repeats itself while real code does not.
 
-Roughly 58% of a scan is flake8, not Replicheck's own analysis:
+Roughly half of a scan is flake8, not Replicheck's own analysis:
 
 | Stage | Share of scan time (~750k corpus) |
 | --- | ---: |
-| Unused imports/variables and bugs/safety (one flake8 pass) | 58.5% |
-| Parse code blocks | 12.5% |
-| Cyclomatic complexity | 11.8% |
-| Large class detection | 8.7% |
-| Large file detection | 7.9% |
-| Duplicate detection | 0.6% |
+| Unused imports/variables and bugs/safety (one flake8 pass) | 50.9% |
+| Parse code blocks | 14.4% |
+| Cyclomatic complexity | 13.8% |
+| Large class detection | 10.2% |
+| Large file detection | 9.3% |
+| Duplicate detection | 0.7% |
 
-Excluding flake8, the analysis pipeline itself runs at about **20,000 lines/sec**
-on synthetic code and **31,000 lines/sec** on real code.
+Excluding flake8, the analysis pipeline itself runs at about **19,000 lines/sec**
+on synthetic code and **30,000 lines/sec** on real code.
 
 Small repositories are start-up bound, not throughput bound: scanning
-Replicheck's own 6,901 lines takes 2.4 s, of which 88% is flake8 process
+Replicheck's own 6,901 lines takes 2.2 s, of which 87% is flake8 process
 start-up. Quote a throughput figure together with the scope and the size of the
 corpus, or it will not mean much.
 
