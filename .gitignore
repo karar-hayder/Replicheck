@@ -5,6 +5,9 @@ node_modules
 benchmarks/corpus/
 benchmarks/.tmp/
 
+# Replicheck's own cross-run cache
+.replicheck-cache.json
+
 # .NET build output. Regenerate with:
 #   utils/C#/ComplexityAnalyzer/BuildAndCompile.cmd
 utils/C#/**/bin/

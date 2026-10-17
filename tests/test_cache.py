@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from replicheck.cache import CACHE_SCHEMA, ScanCache, file_digest
+from replicheck.cache import CACHE_SCHEMA, FINGERPRINT_KEYS, ScanCache, file_digest
 from replicheck.runner import ReplicheckRunner
 
 
@@ -333,3 +333,77 @@ def test_cache_respects_the_smallest_round_trip(tmp_path, threshold):
     first = run("a", complexity_threshold=threshold)
     second = run("b", complexity_threshold=threshold)
     assert first == second
+
+
+def test_a_mixed_cached_run_matches_an_uncached_run(tmp_path):
+    """
+    The earlier regression test only exercised a full cache hit, so it could
+    not see that a mixed run emits cached results before fresh ones and is
+    therefore not byte-identical to an uncached run.
+    """
+    for name in ("one.py", "two.py", "three.py"):
+        write(tmp_path, name, BODY)
+
+    def report(prefix, **overrides):
+        runner = ReplicheckRunner(
+            **runner_kwargs(
+                tmp_path,
+                cache=overrides.pop("cache", False),
+                output_file=str(tmp_path / f"{prefix}.json"),
+                **overrides,
+            )
+        )
+        assert runner.run() == 0
+        return json.loads((tmp_path / f"{prefix}.json").read_text(encoding="utf-8"))
+
+    report("cold", cache=True)
+    write(tmp_path, "one.py", BODY + "import json\n")
+    warm = report("warm", cache=True)
+    uncached = report("uncached")
+
+    assert warm == uncached
+
+
+def test_a_tool_becoming_available_invalidates_the_cache(tmp_path, monkeypatch):
+    """
+    A missing tool makes its detector return nothing. Those empty results must
+    never be answered to a later run made with the tool installed: that is a
+    silent false negative, which is the failure caching exists to avoid.
+    """
+    import replicheck.tools.CyclomaticComplexity.cs_utils as cs_utils
+
+    write(
+        tmp_path,
+        "a.cs",
+        "public class C { public int F(int a) { if (a > 0) { return 1; } return 2; } }",
+    )
+
+    def run(prefix):
+        runner = ReplicheckRunner(
+            **runner_kwargs(
+                tmp_path,
+                cache=True,
+                complexity_threshold=1,
+                output_file=str(tmp_path / f"{prefix}.json"),
+            )
+        )
+        assert runner.run() == 0
+        return json.loads((tmp_path / f"{prefix}.json").read_text(encoding="utf-8"))[
+            "complexity_results"
+        ]
+
+    absent = tmp_path / "absent.exe"
+    monkeypatch.setattr(cs_utils, "_analyzer_path", lambda: absent)
+    assert run("missing") == []  # cached as empty
+
+    monkeypatch.undo()
+    assert run("present")  # must not reuse the empty results
+
+
+def test_min_size_is_not_part_of_the_fingerprint():
+    """
+    min_size only filters duplicate candidates after the per-file results are
+    merged, so changing it cannot change what a file's own results mean and
+    need not discard the cache. Flagged by review as an over-invalidation.
+    """
+    assert "min_size" not in FINGERPRINT_KEYS

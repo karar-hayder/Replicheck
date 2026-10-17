@@ -31,13 +31,23 @@ CACHE_FILENAME = ".replicheck-cache.json"
 
 # Settings that change what a per-file analysis produces. Any difference
 # invalidates every entry.
+#
+# "tools" is the fingerprint of the external tools each detector depends on -
+# flake8's installed version, Node and its package, the C# analyzer binary. When
+# a tool is missing its detector returns nothing, and caching those empty
+# results would answer a later run made with the tool installed: a silent false
+# negative, which is the failure this cache must not produce. Availability and
+# identity are therefore part of what a result means.
+#
+# min_size is deliberately absent: it only filters duplicate candidates after
+# the per-file results are merged, so changing it does not invalidate them.
 FINGERPRINT_KEYS = (
-    "min_size",
     "complexity_threshold",
     "large_file_threshold",
     "large_class_threshold",
     "flake8_codes",
     "extensions",
+    "tools",
 )
 
 

@@ -139,6 +139,44 @@ class ReplicheckRunner:
             UNUSED_CODES + BUG_SAFETY_CODES
         )
 
+    def _tool_markers(self) -> dict:
+        """
+        Fingerprint the external tools each detector depends on.
+
+        Availability is part of what a per-file result means: when a tool is
+        missing, its detector returns nothing, and caching those empty results
+        would answer a later run made with the tool installed. That is a silent
+        false negative, so identity and presence belong in the cache key.
+        """
+        import importlib.metadata
+        import shutil
+
+        from replicheck.tools.CyclomaticComplexity import cs_utils, js_utils
+
+        def package_version(name):
+            try:
+                return importlib.metadata.version(name)
+            except Exception:  # noqa: BLE001 - "absent" is the signal
+                return "absent"
+
+        helpers_dir = js_utils._helper_path().parent
+        analyzer = cs_utils._analyzer_path()
+        analyzer_marker = "absent"
+        if analyzer.exists():
+            stat = analyzer.stat()
+            analyzer_marker = f"{stat.st_mtime_ns}:{stat.st_size}"
+
+        return {
+            "flake8": package_version("flake8"),
+            "node": shutil.which("node") or "absent",
+            "typhonjs-escomplex": (
+                "present"
+                if (helpers_dir / "node_modules" / "typhonjs-escomplex").exists()
+                else "absent"
+            ),
+            "csharp-analyzer": analyzer_marker,
+        }
+
     def _open_cache(self, extensions_set):
         """A loaded cache, or None when caching was not asked for."""
         if not getattr(self, "cache", False):
@@ -148,12 +186,12 @@ class ReplicheckRunner:
             cache_file,
             self.path,
             {
-                "min_size": self.min_size,
                 "complexity_threshold": self.complexity_threshold,
                 "large_file_threshold": self.large_file_threshold,
                 "large_class_threshold": self.large_class_threshold,
                 "flake8_codes": self._flake8_codes(),
                 "extensions": sorted(extensions_set),
+                "tools": self._tool_markers(),
             },
         )
         cache.load()
@@ -227,6 +265,38 @@ class ReplicheckRunner:
         for file_path in files:
             cache.put(file_path, per_file[str(file_path)])
 
+    # Cached results land before freshly produced ones, so the merged order
+    # would otherwise depend on what changed since the last run. Sorting by
+    # where each finding came from makes a cached report identical to an
+    # uncached one, whatever the mix.
+    SORT_KEYS = {
+        "blocks": lambda item: (
+            (item.get("location") or {}).get("file") or "",
+            (item.get("location") or {}).get("start_line") or 0,
+            (item.get("location") or {}).get("end_line") or 0,
+        ),
+        "complexity": lambda item: (
+            item.get("file") or "",
+            item.get("lineno") or 0,
+            item.get("name") or "",
+        ),
+        "unused": lambda item: (
+            item.get("file") or "",
+            item.get("line") or 0,
+            item.get("code") or "",
+        ),
+        "todo": lambda item: (
+            item.get("file") or "",
+            item.get("line") or 0,
+            item.get("type") or "",
+        ),
+        "bns": lambda item: (
+            item.get("file") or "",
+            item.get("line") or 0,
+            item.get("code") or "",
+        ),
+    }
+
     def _report(self, reused, produced):
         """Merge reused and fresh results, then write the report."""
         merged = {}
@@ -238,6 +308,8 @@ class ReplicheckRunner:
                 values.sort(key=lambda x: x["token_count"], reverse=True)
                 if self.top_n_large > 0:
                     values = values[: self.top_n_large]
+            elif group in self.SORT_KEYS:
+                values.sort(key=self.SORT_KEYS[group])
             merged[group] = values
 
         detector = DuplicateDetector(
