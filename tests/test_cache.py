@@ -369,14 +369,16 @@ def test_a_tool_becoming_available_invalidates_the_cache(tmp_path, monkeypatch):
     A missing tool makes its detector return nothing. Those empty results must
     never be answered to a later run made with the tool installed: that is a
     silent false negative, which is the failure caching exists to avoid.
+
+    Both states are forced rather than resting on the real build. On a machine
+    where the analyzer was never built - CI, for one - patching the path to a
+    missing file and then restoring it leaves the marker "absent" either way,
+    so no invalidation is expected and the test would fail for the wrong
+    reason.
     """
     import replicheck.tools.CyclomaticComplexity.cs_utils as cs_utils
 
-    write(
-        tmp_path,
-        "a.cs",
-        "public class C { public int F(int a) { if (a > 0) { return 1; } return 2; } }",
-    )
+    write(tmp_path, "a.cs", "public class C { public int F(int a) { return 1; } }")
 
     def run(prefix):
         runner = ReplicheckRunner(
@@ -392,11 +394,31 @@ def test_a_tool_becoming_available_invalidates_the_cache(tmp_path, monkeypatch):
             "complexity_results"
         ]
 
-    absent = tmp_path / "absent.exe"
-    monkeypatch.setattr(cs_utils, "_analyzer_path", lambda: absent)
-    assert run("missing") == []  # cached as empty
+    # Absent: a path that does not exist, so the detector finds nothing and that
+    # emptiness gets cached.
+    monkeypatch.setattr(cs_utils, "_analyzer_path", lambda: tmp_path / "absent.exe")
+    assert run("absent") == []
 
-    monkeypatch.undo()
+    # Present: a path that does exist, so the tool marker changes, plus a stubbed
+    # detector - this test is about the cache key, not about running the binary.
+    built = write(tmp_path, "built.exe", "")
+    monkeypatch.setattr(cs_utils, "_analyzer_path", lambda: built)
+    monkeypatch.setattr(
+        cs_utils,
+        "analyze_cs_cyclomatic_complexity_batch",
+        lambda files, threshold=10: [
+            {
+                "name": "F",
+                "complexity": 3,
+                "lineno": 1,
+                "endline": 1,
+                "file": str(path),
+                "threshold": threshold,
+                "severity": "Low 🟢",
+            }
+            for path in files
+        ],
+    )
     assert run("present")  # must not reuse the empty results
 
 
